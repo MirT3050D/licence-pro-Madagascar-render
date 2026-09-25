@@ -62,6 +62,85 @@
         </div>
       </div>
 
+      <!-- Admin Team Management & Seller Approvals (Visible only to Admin) -->
+      <div v-if="isSuperAdmin" class="card p-0 mt-4 admin-users-card">
+        <div class="card-header-bar flex-between">
+          <div>
+            <h3>👑 Gestion de l'Équipe & Validation des Vendeurs</h3>
+            <span class="text-xs text-muted">Validez les nouveaux inscrits et gérez les accès de votre équipe</span>
+          </div>
+          <button @click="loadUsers" class="btn btn-secondary btn-sm" :disabled="loadingUsers">
+            <RefreshCw :size="14" :class="{ 'spin-icon': loadingUsers }" />
+            <span>Actualiser</span>
+          </button>
+        </div>
+
+        <div v-if="adminActionMessage" class="action-alert animate-fade">
+          <CheckCircle2 :size="16" class="text-emerald flex-shrink-0" />
+          <span>{{ adminActionMessage }}</span>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Utilisateur / Vendeur</th>
+                <th>Coordonnées</th>
+                <th>Rôle</th>
+                <th>Statut d'accès</th>
+                <th style="text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in usersList" :key="u.id">
+                <td>
+                  <div class="font-bold">{{ u.prenom }} {{ u.nom }}</div>
+                  <div class="text-xs text-muted">Inscrit le {{ formatDate(u.created_at) }}</div>
+                </td>
+                <td>
+                  <div class="font-mono text-sm">{{ u.email }}</div>
+                  <div class="text-xs text-muted">{{ u.numero || 'Non renseigné' }}</div>
+                </td>
+                <td>
+                  <span class="badge" :class="u.role?.nom === 'admin' ? 'badge-primary' : 'badge-neutral'">
+                    {{ u.role?.label || 'Vendeur' }}
+                  </span>
+                </td>
+                <td>
+                  <span v-if="u.is_active" class="badge badge-success">
+                    <CheckCircle2 :size="13" />
+                    <span>Actif</span>
+                  </span>
+                  <span v-else class="badge badge-warning pulse-badge">
+                    <Clock :size="13" />
+                    <span>En attente de validation</span>
+                  </span>
+                </td>
+                <td style="text-align: right;">
+                  <button
+                    v-if="u.id !== profileData?.user?.id"
+                    @click="toggleUserActive(u)"
+                    class="btn btn-sm"
+                    :class="u.is_active ? 'btn-danger-outline' : 'btn-success'"
+                    :disabled="togglingId === u.id"
+                  >
+                    <span v-if="togglingId === u.id">Mise à jour...</span>
+                    <span v-else-if="!u.is_active">✓ Valider & Activer</span>
+                    <span v-else>Suspendre</span>
+                  </button>
+                  <span v-else class="text-xs text-muted font-italic">Votre compte</span>
+                </td>
+              </tr>
+              <tr v-if="!usersList.length && !loadingUsers">
+                <td colspan="5" class="text-center py-6 text-muted">
+                  Aucun autre utilisateur enregistré.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Personal Sales History Table -->
       <div class="card p-0 mt-4">
         <div class="card-header-bar">
@@ -108,13 +187,22 @@ import {
   Mail,
   Phone,
   Award,
-  RefreshCw
+  RefreshCw,
+  CheckCircle2,
+  Clock
 } from '@lucide/vue'
 import { useAuth } from '../composables/useAuth'
+import apiClient from '../api/client'
 
-const { fetchProfile } = useAuth()
+const { fetchProfile, isSuperAdmin } = useAuth()
 const loading = ref(false)
 const profileData = ref(null)
+
+// Admin team management state
+const usersList = ref([])
+const loadingUsers = ref(false)
+const togglingId = ref(null)
+const adminActionMessage = ref('')
 
 const userInitials = computed(() => {
   const u = profileData.value?.user
@@ -133,6 +221,36 @@ async function loadProfileData() {
   }
 }
 
+async function loadUsers() {
+  if (!isSuperAdmin.value) return
+  loadingUsers.value = true
+  try {
+    const res = await apiClient.get('/auth/users/')
+    usersList.value = res.data.results || res.data || []
+  } catch (err) {
+    console.error('Erreur chargement utilisateurs:', err)
+  } finally {
+    loadingUsers.value = false
+  }
+}
+
+async function toggleUserActive(userItem) {
+  togglingId.value = userItem.id
+  adminActionMessage.value = ''
+  try {
+    const res = await apiClient.post(`/auth/users/${userItem.id}/toggle_active/`)
+    userItem.is_active = res.data.is_active
+    adminActionMessage.value = res.data.message
+    setTimeout(() => {
+      adminActionMessage.value = ''
+    }, 4500)
+  } catch (err) {
+    console.error('Erreur activation utilisateur:', err)
+  } finally {
+    togglingId.value = null
+  }
+}
+
 function formatPrice(val) {
   return new Intl.NumberFormat('fr-MG').format(val || 0) + ' Ar'
 }
@@ -147,8 +265,11 @@ function formatDate(dateStr) {
   })
 }
 
-onMounted(() => {
-  loadProfileData()
+onMounted(async () => {
+  await loadProfileData()
+  if (isSuperAdmin.value) {
+    loadUsers()
+  }
 })
 </script>
 
@@ -159,9 +280,28 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  gap: 1rem;
+  color: var(--text-muted);
+}
+
+.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .profile-grid {
   display: grid;
-  grid-template-columns: 1fr 1.3fr;
+  grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
 }
 
@@ -176,22 +316,22 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 2rem;
-  gap: 1rem;
+  padding: 2.25rem 1.5rem;
 }
 
 .avatar-large {
-  width: 80px;
-  height: 80px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   background: var(--gradient-brand);
-  color: white;
-  font-size: 1.8rem;
+  color: #060d19;
+  font-size: 1.75rem;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+  margin-bottom: 1.25rem;
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
 }
 
 .user-main-info h2 {
@@ -217,16 +357,17 @@ onMounted(() => {
   flex-direction: column;
   gap: 0.65rem;
   width: 100%;
-  margin-top: 1rem;
-  padding-top: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
   border-top: 1px solid var(--border-subtle);
 }
 
 .contact-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.65rem;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
@@ -234,41 +375,40 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 2rem;
+  padding: 1.75rem;
 }
 
 .balance-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 700;
 }
 
 .points-hero {
+  margin: 1.25rem 0;
   display: flex;
   align-items: baseline;
-  gap: 0.65rem;
-  margin: 1.25rem 0;
+  gap: 0.5rem;
 }
 
 .points-number {
   font-size: 3.5rem;
   font-weight: 900;
-  letter-spacing: -0.04em;
-  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  line-height: 1;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .points-unit {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 700;
-  color: #f59e0b;
+  color: var(--text-secondary);
 }
 
 .balance-desc {
   font-size: 0.825rem;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   line-height: 1.5;
   margin-bottom: 1.5rem;
 }
@@ -283,40 +423,94 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 0.85rem 1rem;
+  padding: 0.75rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
 }
 
 .pill-label {
-  font-size: 0.725rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
 }
 
 .pill-val {
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   font-weight: 800;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .card-header-bar {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .card-header-bar h3 {
   font-size: 1.05rem;
 }
 
-.loading-state {
+.admin-users-card {
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  box-shadow: 0 0 25px rgba(0, 210, 255, 0.08);
+}
+
+.action-alert {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 4rem;
-  gap: 1rem;
+  gap: 0.65rem;
+  background: var(--emerald-bg);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.85rem;
+}
+
+.pulse-badge {
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+.badge-neutral {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.btn-success {
+  background: var(--gradient-emerald);
+  color: white;
+  border: none;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
+}
+
+.btn-success:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid rgba(244, 63, 94, 0.4);
+  color: #fda4af;
+}
+
+.btn-danger-outline:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.7);
+}
+
+.font-italic {
+  font-style: italic;
 }
 </style>

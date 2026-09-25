@@ -22,7 +22,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Utilisateur
-        fields = ['id', 'nom', 'prenom', 'numero', 'email', 'role', 'role_id', 'password', 'created_at']
+        fields = ['id', 'nom', 'prenom', 'numero', 'email', 'role', 'role_id', 'password', 'is_active', 'created_at']
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
@@ -49,10 +49,15 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         email = attrs.get('email', '').strip()
         attrs['email'] = email
 
-        user_exists = Utilisateur.objects.filter(email__iexact=email).exists()
-        if not user_exists:
+        user = Utilisateur.objects.filter(email__iexact=email).first()
+        if not user:
             raise serializers.ValidationError({
                 'detail': f"Aucun compte associé à l'adresse '{email}'. Veuillez vérifier votre saisie."
+            })
+
+        if not user.is_active:
+            raise serializers.ValidationError({
+                'detail': "Ce compte est en attente d'approbation par l'administrateur. Veuillez contacter votre responsable pour son activation."
             })
 
         try:
@@ -70,11 +75,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     password_confirm = serializers.CharField(write_only=True, min_length=6)
-    role_type = serializers.ChoiceField(choices=['admin', 'vendeur'], default='vendeur', write_only=True)
 
     class Meta:
         model = Utilisateur
-        fields = ['id', 'nom', 'prenom', 'numero', 'email', 'password', 'password_confirm', 'role_type']
+        fields = ['id', 'nom', 'prenom', 'numero', 'email', 'password', 'password_confirm']
 
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('password_confirm'):
@@ -92,15 +96,18 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
         password = validated_data.pop('password')
-        role_type = validated_data.pop('role_type', 'vendeur')
 
-        if role_type == 'admin':
+        # Si aucun administrateur actif n'existe dans le système, le premier compte devient Admin actif
+        has_active_admin = Utilisateur.objects.filter(is_superuser=True, is_active=True).exists()
+
+        if not has_active_admin:
             role_obj, _ = Role.objects.get_or_create(
                 nom='admin',
                 defaults={'label': 'Administrateur', 'point': 100}
             )
             is_staff = True
             is_superuser = True
+            is_active = True
         else:
             role_obj, _ = Role.objects.get_or_create(
                 nom='vendeur',
@@ -108,12 +115,14 @@ class RegisterSerializer(serializers.ModelSerializer):
             )
             is_staff = False
             is_superuser = False
+            is_active = False  # En attente d'approbation par l'administrateur
 
         user = Utilisateur.objects.create_user(
             password=password,
             role=role_obj,
             is_staff=is_staff,
             is_superuser=is_superuser,
+            is_active=is_active,
             **validated_data
         )
         return user

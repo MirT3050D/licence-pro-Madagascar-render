@@ -159,42 +159,15 @@
             </div>
           </div>
 
-          <!-- Role Selector -->
-          <div class="form-group">
-            <label class="form-label">Type de compte</label>
-            <div class="role-selector">
-              <label
-                class="role-option"
-                :class="{ selected: regRole === 'admin' }"
-              >
-                <input
-                  type="radio"
-                  value="admin"
-                  v-model="regRole"
-                  class="sr-only"
-                />
-                <div class="role-content">
-                  <div class="role-badge-title">👑 Administrateur</div>
-                  <div class="role-badge-desc">Accès total aux ventes, produits & utilisateurs</div>
-                </div>
-              </label>
-
-              <label
-                class="role-option"
-                :class="{ selected: regRole === 'vendeur' }"
-              >
-                <input
-                  type="radio"
-                  value="vendeur"
-                  v-model="regRole"
-                  class="sr-only"
-                />
-                <div class="role-content">
-                  <div class="role-badge-title">💼 Vendeur / Commercial</div>
-                  <div class="role-badge-desc">Affilié, enregistrement des ventes & commission</div>
-                </div>
-              </label>
+          <!-- Notice de validation Vendeur -->
+          <div class="registration-security-box">
+            <div class="security-badge-header">
+              <ShieldCheck :size="16" class="text-primary" />
+              <strong>Compte Vendeur & Commercial</strong>
             </div>
+            <p class="security-badge-text">
+              Pour des raisons de sécurité, votre compte sera activé par l'Administrateur avant de pouvoir accéder à l'application.
+            </p>
           </div>
 
           <div class="form-group">
@@ -355,16 +328,25 @@ async function handleRegister() {
       prenom: regPrenom.value.trim(),
       numero: regNumero.value.trim(),
       email: regEmail.value.trim().toLowerCase(),
-      role_type: regRole.value,
       password: regPassword.value,
       password_confirm: regPasswordConfirm.value
     }
 
-    await register(payload)
-    successMessage.value = 'Votre compte a été créé avec succès ! Connexion en cours...'
-    setTimeout(() => {
-      router.push('/')
-    }, 800)
+    const res = await register(payload)
+    if (res.requires_approval) {
+      successMessage.value = res.message || "Inscription enregistrée ! Votre compte est en attente de validation par l'administrateur."
+      regNom.value = ''
+      regPrenom.value = ''
+      regNumero.value = ''
+      regEmail.value = ''
+      regPassword.value = ''
+      regPasswordConfirm.value = ''
+    } else {
+      successMessage.value = 'Compte initial configuré ! Connexion en cours...'
+      setTimeout(() => {
+        router.push('/')
+      }, 800)
+    }
   } catch (err) {
     const errData = err.response?.data
     if (errData) {
@@ -590,40 +572,27 @@ async function handleRegister() {
   flex-direction: column;
 }
 
-.role-option:hover {
-  background: rgba(0, 210, 255, 0.05);
-  border-color: rgba(0, 210, 255, 0.3);
+.registration-security-box {
+  background: rgba(0, 210, 255, 0.06);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
 }
 
-.role-option.selected {
-  border-color: var(--primary);
-  background: rgba(0, 210, 255, 0.12);
-  box-shadow: 0 0 12px rgba(0, 210, 255, 0.2);
-}
-
-.role-badge-title {
+.security-badge-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--text-main);
-  margin-bottom: 0.2rem;
+  color: var(--primary);
+  margin-bottom: 0.35rem;
 }
 
-.role-badge-desc {
-  font-size: 0.68rem;
+.security-badge-text {
+  font-size: 0.75rem;
   color: var(--text-secondary);
-  line-height: 1.3;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
+  line-height: 1.4;
 }
 
 .btn-eye {
