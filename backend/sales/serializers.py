@@ -125,3 +125,40 @@ class VenteCreateSerializer(serializers.Serializer):
                 )
 
         return vente
+
+    def update(self, instance, validated_data):
+        user_affilie_id = validated_data.get('user_affilie_id')
+        if user_affilie_id is not None:
+            instance.user_affilie = Utilisateur.objects.filter(id=user_affilie_id).first() or instance.user_affilie
+
+        if 'client_id' in validated_data:
+            instance.client = Client.objects.get(id=validated_data['client_id'])
+        if 'methode_paiement_id' in validated_data:
+            instance.methode_paiement = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
+        if 'date' in validated_data and validated_data['date'] is not None:
+            instance.date = validated_data['date']
+
+        articles_data = validated_data.get('articles')
+
+        with transaction.atomic():
+            instance.save()
+
+            if articles_data is not None:
+                instance.commandes.all().delete()
+                for item in articles_data:
+                    produit = Produit.objects.get(id=item['produit_id'])
+                    prix = item.get('prix_unitaire')
+                    if prix is None:
+                        prix = produit.prix_actif
+                        if prix is None:
+                            raise serializers.ValidationError(f"Aucun prix actif défini pour le produit '{produit.nom}'.")
+
+                    Commande.objects.create(
+                        vente=instance,
+                        produit=produit,
+                        quantite=item['quantite'],
+                        prix_unitaire=prix,
+                        date=instance.date
+                    )
+
+        return instance

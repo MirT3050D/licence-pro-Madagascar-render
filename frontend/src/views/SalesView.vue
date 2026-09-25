@@ -209,6 +209,9 @@
                     <FileText :size="14" />
                     <span>Détails & Guides</span>
                   </button>
+                  <button v-if="isSuperAdmin" @click="openEditSaleModal(vente)" class="btn-icon btn-secondary-icon" title="Modifier cette vente">
+                    <Pencil :size="14" />
+                  </button>
                   <button v-if="isSuperAdmin" @click="deleteSale(vente)" class="btn-icon btn-danger-icon" title="Supprimer la vente">
                     <Trash2 :size="14" />
                   </button>
@@ -226,205 +229,227 @@
     </div>
 
     <!-- MODAL: Créer une Vente Multi-Produits -->
-    <div v-if="showCreateModal" class="modal-backdrop">
-      <div class="modal-card modal-xl card animate-fade">
-        <div class="modal-header">
-          <div>
-            <h3>Nouvelle Transaction</h3>
-            <span class="text-xs text-muted">Sélectionnez le client, ajoutez les licences et validez</span>
+    <Teleport to="body">
+      <div v-if="showCreateModal" class="modal-backdrop" @click.self="showCreateModal = false">
+        <div class="sale-modal-card card animate-fade">
+          <!-- Header -->
+          <div class="modal-header-custom">
+            <div class="modal-header-info">
+              <div class="modal-header-icon">
+                <Pencil v-if="isEditing" :size="22" />
+                <ShoppingCart v-else :size="22" />
+              </div>
+              <div>
+                <h3 class="modal-title">{{ isEditing ? `Modifier la Transaction #${editingSaleId}` : 'Nouvelle Transaction' }}</h3>
+                <p class="modal-subtitle">{{ isEditing ? 'Modifiez le client, la date, le mode de règlement ou les articles de cette vente' : 'Sélectionnez le client, ajustez les produits et validez la vente' }}</p>
+              </div>
+            </div>
+            <button @click="showCreateModal = false" class="btn-close" title="Fermer"><X :size="20" /></button>
           </div>
-          <button @click="showCreateModal = false" class="btn-close"><X :size="20" /></button>
-        </div>
 
-        <form @submit.prevent="submitCreateSale" class="modal-body">
-          <!-- Grille 2x2 : Client, Date, Paiement, Vendeur -->
-          <div class="sale-top-grid">
-            <!-- Client selection (Haut Gauche) -->
-            <div class="form-group">
-              <label class="form-label">Client *</label>
-              <select v-model="form.client_id" required class="form-select">
-                <option value="" disabled>-- Choisir le client --</option>
-                <option v-for="c in clientsList" :key="c.id" :value="c.id">
-                  {{ c.nom }} ({{ c.numero || 'Pas de numéro' }})
-                </option>
-              </select>
+          <form @submit.prevent="submitCreateSale" class="sale-modal-body">
+            <!-- 1. Champs Principaux : Grille 2x2 propre, 50/50 stricte -->
+            <div class="sale-fields-grid">
+              <!-- Client selection (Haut Gauche) -->
+              <div class="form-group">
+                <label class="form-label">Client *</label>
+                <select v-model="form.client_id" required class="form-select">
+                  <option value="" disabled>-- Choisir le client --</option>
+                  <option v-for="c in clientsList" :key="c.id" :value="c.id">
+                    {{ c.nom }} ({{ c.numero || 'Pas de numéro' }})
+                  </option>
+                </select>
+              </div>
+
+              <!-- Date de la vente (Haut Droite) -->
+              <div class="form-group">
+                <div class="field-label-row">
+                  <label class="form-label">Date de la vente *</label>
+                  <button
+                    type="button"
+                    @click="form.date = getLocalDateTimeString()"
+                    class="btn-now-shortcut"
+                    title="Rétablir à la date et heure actuelles"
+                  >
+                    <Clock :size="12" />
+                    <span>Maintenant</span>
+                  </button>
+                </div>
+                <input
+                  v-model="form.date"
+                  type="datetime-local"
+                  required
+                  class="form-input"
+                />
+              </div>
+
+              <!-- Mode de paiement (Bas Gauche) -->
+              <div class="form-group">
+                <div class="field-label-row">
+                  <label class="form-label">Méthode de Paiement *</label>
+                  <router-link
+                    to="/paiements"
+                    target="_blank"
+                    class="field-link"
+                    title="Gérer ou ajouter des méthodes de paiement"
+                  >
+                    <ExternalLink :size="12" />
+                    <span>Gérer</span>
+                  </router-link>
+                </div>
+                <select v-model="form.methode_paiement_id" required class="form-select">
+                  <option value="" disabled>-- Choisir le mode de paiement --</option>
+                  <option v-for="m in paymentMethods" :key="m.id" :value="m.id">
+                    {{ m.label }} <span v-if="m.details">({{ m.details }})</span>
+                  </option>
+                </select>
+              </div>
+
+              <!-- Vendeur / Affilié (Bas Droite) -->
+              <div class="form-group">
+                <label class="form-label">Vendeur / Affilié *</label>
+                <select v-model="form.user_affilie_id" class="form-select">
+                  <option :value="user?.id">👑 Moi-même ({{ user?.prenom }} {{ user?.nom }})</option>
+                  <option v-for="u in vendorsList" :key="u.id" :value="u.id">
+                    👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Vendeur' }})
+                  </option>
+                </select>
+              </div>
             </div>
 
-            <!-- Date de la vente (Haut Droite) -->
-            <div class="form-group">
-              <div class="flex items-center justify-between mb-1">
-                <label class="form-label" style="margin-bottom: 0;">Date de la vente *</label>
-                <button
-                  type="button"
-                  @click="form.date = getLocalDateTimeString()"
-                  class="text-xs text-primary btn-link-action"
-                  title="Rétablir à la date et heure actuelles"
-                >
-                  Maintenant
+            <!-- 2. Section Articles & Licences sous forme de tableau épuré -->
+            <div class="sale-items-card">
+              <div class="sale-items-header">
+                <div class="sale-items-title">
+                  <Package :size="16" class="text-primary" />
+                  <span>Articles & Licences inclus</span>
+                  <span class="badge badge-primary">{{ form.articles.length }} article(s)</span>
+                </div>
+                <button @click="addArticleLine" type="button" class="btn btn-secondary btn-xs">
+                  <Plus :size="14" />
+                  <span>Ajouter un produit</span>
                 </button>
               </div>
-              <input
-                v-model="form.date"
-                type="datetime-local"
-                required
-                class="form-input"
-              />
-            </div>
 
-            <!-- Mode de paiement (Bas Gauche - Juste sous le client, facile d'accès) -->
-            <div class="form-group">
-              <div class="flex items-center justify-between mb-1">
-                <label class="form-label" style="margin-bottom: 0;">Méthode de Paiement *</label>
-                <router-link
-                  to="/paiements"
-                  target="_blank"
-                  class="text-xs text-primary flex items-center gap-1"
-                  title="Gérer ou ajouter des méthodes de paiement"
-                >
-                  <ExternalLink :size="12" />
-                  <span>Gérer</span>
-                </router-link>
+              <!-- En-tête des colonnes du tableau -->
+              <div class="sale-table-head">
+                <span>Produit / Licence *</span>
+                <span>Qté *</span>
+                <span>Prix Unitaire (Ar) *</span>
+                <span style="text-align: right;">Sous-total</span>
+                <span></span>
               </div>
-              <select v-model="form.methode_paiement_id" required class="form-select">
-                <option value="" disabled>-- Choisir le mode de paiement --</option>
-                <option v-for="m in paymentMethods" :key="m.id" :value="m.id">
-                  {{ m.label }} <span v-if="m.details">({{ m.details }})</span>
-                </option>
-              </select>
-            </div>
 
-            <!-- Vendeur / Affilié (Bas Droite - Libellé concis) -->
-            <div class="form-group">
-              <label class="form-label">Vendeur / Affilié *</label>
-              <select v-model="form.user_affilie_id" class="form-select">
-                <option :value="user?.id">👑 Moi-même ({{ user?.prenom }} {{ user?.nom }})</option>
-                <option v-for="u in vendorsList" :key="u.id" :value="u.id">
-                  👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Vendeur' }})
-                </option>
-              </select>
-            </div>
-          </div>
+              <!-- Lignes d'articles -->
+              <div class="sale-table-body">
+                <div v-for="(line, idx) in form.articles" :key="idx" class="sale-table-row">
+                  <!-- Produit -->
+                  <div class="cell-product">
+                    <select
+                      v-model="line.produit_id"
+                      @change="onProductSelect(line)"
+                      required
+                      class="form-select"
+                    >
+                      <option value="" disabled>-- Sélectionner le produit --</option>
+                      <option v-for="p in productsList" :key="p.id" :value="p.id">
+                        {{ p.nom }} (Prix actif: {{ formatPrice(p.prix_actif) }})
+                      </option>
+                    </select>
+                  </div>
 
-          <!-- Product Lines Section -->
-          <div class="order-items-box">
-            <div class="order-items-header">
-              <div class="items-header-title">
-                <span class="text-sm font-bold">Produits & Licences inclus dans la vente</span>
-                <span class="badge badge-secondary">{{ form.articles.length }} article(s)</span>
-              </div>
-              <button @click="addArticleLine" type="button" class="btn btn-secondary btn-xs">
-                <Plus :size="14" />
-                <span>Ajouter un produit</span>
-              </button>
-            </div>
+                  <!-- Quantité -->
+                  <div class="cell-qty">
+                    <input
+                      v-model.number="line.quantite"
+                      type="number"
+                      min="1"
+                      required
+                      class="form-input"
+                    />
+                  </div>
 
-            <div class="articles-lines-list">
-              <div v-for="(line, idx) in form.articles" :key="idx" class="article-line-row">
-                <!-- Product selector -->
-                <div class="line-col-product">
-                  <label class="form-label text-xs">Produit *</label>
-                  <select
-                    v-model="line.produit_id"
-                    @change="onProductSelect(line)"
-                    required
-                    class="form-select"
-                  >
-                    <option value="" disabled>-- Sélectionner le produit --</option>
-                    <option v-for="p in productsList" :key="p.id" :value="p.id">
-                      {{ p.nom }} (Prix actif: {{ formatPrice(p.prix_actif) }})
-                    </option>
-                  </select>
-                </div>
-
-                <!-- Quantity -->
-                <div class="line-col-qty">
-                  <label class="form-label text-xs">Quantité</label>
-                  <input
-                    v-model.number="line.quantite"
-                    type="number"
-                    min="1"
-                    required
-                    class="form-input"
-                  />
-                </div>
-
-                <!-- Unit price (prefilled with active price, editable) -->
-                <div class="line-col-price">
-                  <div class="flex items-center justify-between">
-                    <label class="form-label text-xs">Prix Unitaire (Ar) *</label>
+                  <!-- Prix unitaire -->
+                  <div class="cell-price">
+                    <input
+                      v-model.number="line.prix_unitaire"
+                      type="number"
+                      min="0"
+                      step="100"
+                      required
+                      class="form-input"
+                      placeholder="Prix unitaire"
+                    />
                     <button
                       v-if="getActivePrice(line.produit_id) !== null && line.prix_unitaire !== Number(getActivePrice(line.produit_id))"
                       type="button"
                       @click="resetToActivePrice(line)"
-                      class="text-xs text-primary btn-link-action"
+                      class="price-reset-hint"
                       title="Rétablir au prix actif du catalogue"
                     >
-                      Prix actif
+                      ↺ Prix actif ({{ formatPrice(getActivePrice(line.produit_id)) }})
                     </button>
                   </div>
-                  <input
-                    v-model.number="line.prix_unitaire"
-                    type="number"
-                    min="0"
-                    step="100"
-                    required
-                    class="form-input"
-                    placeholder="Prix unitaire"
-                  />
-                </div>
 
-                <!-- Line Subtotal -->
-                <div class="line-subtotal">
-                  <span class="text-xs text-muted">Sous-total</span>
-                  <span class="font-bold text-emerald">
+                  <!-- Sous-total -->
+                  <div class="cell-subtotal">
                     {{ formatPrice((line.quantite || 0) * (line.prix_unitaire || 0)) }}
-                  </span>
-                </div>
+                  </div>
 
-                <!-- Remove Line -->
-                <button
-                  v-if="form.articles.length > 1"
-                  @click="removeArticleLine(idx)"
-                  type="button"
-                  class="btn-icon btn-danger-icon"
-                  title="Supprimer la ligne"
-                >
-                  <Trash2 :size="15" />
+                  <!-- Suppression -->
+                  <div class="cell-action">
+                    <button
+                      v-if="form.articles.length > 1"
+                      @click="removeArticleLine(idx)"
+                      type="button"
+                      class="btn-icon btn-danger-icon"
+                      title="Supprimer cette ligne"
+                    >
+                      <Trash2 :size="15" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. Pied de page & validation -->
+            <div class="sale-modal-footer">
+              <div class="total-display-group">
+                <span class="total-display-label">Montant Total à Payer :</span>
+                <span class="total-display-amount">{{ formatPrice(computedTotal) }}</span>
+              </div>
+
+              <div class="footer-btn-actions">
+                <button @click="showCreateModal = false" type="button" class="btn btn-secondary">Annuler</button>
+                <button type="submit" class="btn btn-success" :disabled="submitting || computedTotal <= 0">
+                  <Check :size="18" />
+                  <span v-if="submitting">{{ isEditing ? 'Enregistrement...' : 'Validation en cours...' }}</span>
+                  <span v-else>{{ isEditing ? 'Enregistrer les modifications' : 'Valider la vente' }}</span>
                 </button>
               </div>
             </div>
-          </div>
-
-          <!-- Total Summary & Submit -->
-          <div class="sale-summary-bar">
-            <div class="total-box">
-              <span class="total-label">Montant Total à Payer :</span>
-              <span class="total-amount">{{ formatPrice(computedTotal) }}</span>
-            </div>
-
-            <div class="modal-actions">
-              <button @click="showCreateModal = false" type="button" class="btn btn-secondary">Annuler</button>
-              <button type="submit" class="btn btn-success" :disabled="submitting || computedTotal <= 0">
-                <Check :size="18" />
-                <span v-if="submitting">Validation en cours...</span>
-                <span v-else>Valider la vente</span>
-              </button>
-            </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- MODAL: Fiche Détail d'une Vente & Guides d'activation -->
-    <div v-if="showDetailModal && selectedSale" class="modal-backdrop">
-      <div class="modal-card modal-lg card animate-fade">
-        <div class="modal-header">
-          <div>
-            <h3>Vente #{{ selectedSale.id }}</h3>
-            <span class="text-xs text-muted">{{ formatDateTime(selectedSale.date) }}</span>
+    <Teleport to="body">
+      <div v-if="showDetailModal && selectedSale" class="modal-backdrop" @click.self="showDetailModal = false">
+        <div class="modal-card modal-lg card animate-fade">
+          <div class="modal-header">
+            <div>
+              <h3>Vente #{{ selectedSale.id }}</h3>
+              <span class="text-xs text-muted">{{ formatDateTime(selectedSale.date) }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button v-if="isSuperAdmin" @click="openEditSaleModal(selectedSale)" class="btn btn-secondary btn-xs" title="Modifier cette vente">
+                <Pencil :size="13" />
+                <span>Modifier</span>
+              </button>
+              <button @click="showDetailModal = false" class="btn-close"><X :size="20" /></button>
+            </div>
           </div>
-          <button @click="showDetailModal = false" class="btn-close"><X :size="20" /></button>
-        </div>
 
         <div class="modal-body detail-body">
           <!-- Client & Payment info banner -->
@@ -488,6 +513,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -498,6 +524,7 @@ import {
   Plus,
   Search,
   FileText,
+  Pencil,
   Trash2,
   X,
   Check,
@@ -507,7 +534,9 @@ import {
   RotateCcw,
   Lock,
   Package,
-  ExternalLink
+  ExternalLink,
+  ShoppingCart,
+  Clock
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'
@@ -550,6 +579,8 @@ function getLocalDateTimeString(date = new Date()) {
 const showCreateModal = ref(false)
 const showDetailModal = ref(false)
 const selectedSale = ref(null)
+const isEditing = ref(false)
+const editingSaleId = ref(null)
 
 const form = ref({
   client_id: '',
@@ -709,11 +740,40 @@ function resetToActivePrice(line) {
   }
 }
 
-function openCreateSaleModal() {
+// Watchers to auto-fill defaults once lists are fetched
+watch(productsList, (newProds) => {
+  if (newProds?.length) {
+    if (!form.value.articles[0]?.produit_id) {
+      form.value.articles[0].produit_id = newProds[0].id
+      form.value.articles[0].prix_unitaire = Number(newProds[0].prix_actif || 0)
+    }
+  }
+}, { immediate: true })
+
+watch(clientsList, (newClients) => {
+  if (newClients?.length && !form.value.client_id) {
+    form.value.client_id = newClients[0].id
+  }
+}, { immediate: true })
+
+watch(paymentMethods, (newMethods) => {
+  if (newMethods?.length && !form.value.methode_paiement_id) {
+    form.value.methode_paiement_id = newMethods[0].id
+  }
+}, { immediate: true })
+
+async function openCreateSaleModal() {
   if (!isSuperAdmin.value) {
     alert("Permission refusée. Seul un administrateur (niveau 50) peut enregistrer de nouvelles ventes.")
     return
   }
+  isEditing.value = false
+  editingSaleId.value = null
+
+  if (!productsList.value.length || !clientsList.value.length) {
+    await fetchFormDependencies()
+  }
+
   const prefill = sessionStorage.getItem('prefill_sale')
   if (prefill) {
     try {
@@ -751,13 +811,46 @@ function openCreateSaleModal() {
   showCreateModal.value = true
 }
 
+function openEditSaleModal(vente) {
+  if (!isSuperAdmin.value) {
+    alert("Permission refusée. Seul un administrateur (niveau 50) peut modifier des ventes.")
+    return
+  }
+  isEditing.value = true
+  editingSaleId.value = vente.id
+  showDetailModal.value = false
+
+  form.value = {
+    client_id: vente.client?.id || '',
+    date: vente.date ? getLocalDateTimeString(new Date(vente.date)) : getLocalDateTimeString(),
+    user_affilie_id: vente.user_affilie?.id || (user.value?.id || ''),
+    methode_paiement_id: vente.methode_paiement?.id || '',
+    articles: vente.commandes?.length
+      ? vente.commandes.map(cmd => ({
+          produit_id: cmd.produit?.id || cmd.produit,
+          quantite: cmd.quantite || 1,
+          prix_unitaire: Number(cmd.prix_unitaire || 0)
+        }))
+      : [
+          {
+            produit_id: productsList.value[0]?.id || '',
+            quantite: 1,
+            prix_unitaire: Number(productsList.value[0]?.prix_actif || 0)
+          }
+        ]
+  }
+  showCreateModal.value = true
+}
+
 function resetForm() {
   const defaultProduct = productsList.value[0]
+  const defaultClient = clientsList.value[0]
+  const defaultMethod = paymentMethods.value[0]
   form.value = {
-    client_id: clientsList.value[0]?.id || '',
+    client_id: defaultClient?.id || '',
     date: getLocalDateTimeString(),
     user_affilie_id: user.value?.id || '',
-    methode_paiement_id: paymentMethods.value[0]?.id || '',
+    methode_paiement_id: defaultMethod?.id || '',
     articles: [
       {
         produit_id: defaultProduct?.id || '',
@@ -827,7 +920,13 @@ async function submitCreateSale() {
         prix_unitaire: a.prix_unitaire
       }))
     }
-    await apiClient.post('/ventes/', payload)
+
+    if (isEditing.value && editingSaleId.value) {
+      await apiClient.put(`/ventes/${editingSaleId.value}/`, payload)
+    } else {
+      await apiClient.post('/ventes/', payload)
+    }
+
     showCreateModal.value = false
     await fetchSales()
 
@@ -1163,6 +1262,323 @@ onMounted(async () => {
   padding: 1.5rem;
 }
 
+/* MODAL STYLES */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1.5rem;
+}
+
+.sale-modal-card {
+  width: 100%;
+  max-width: 860px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: #0b1526;
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 210, 255, 0.1);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.modal-header-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-header-info {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.modal-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.modal-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.btn-close:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 1. TOP FIELDS: STRICT 50/50 GRID */
+.sale-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1.75rem;
+  width: 100%;
+}
+
+.sale-fields-grid .form-group {
+  margin-bottom: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.sale-fields-grid .form-input,
+.sale-fields-grid .form-select {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  min-width: 0;
+}
+
+.field-label-row .form-label {
+  margin-bottom: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.field-link:hover {
+  text-decoration: underline;
+  filter: brightness(1.2);
+}
+
+.btn-now-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(0, 210, 255, 0.1);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  color: var(--primary);
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.btn-now-shortcut:hover {
+  background: rgba(0, 210, 255, 0.2);
+  border-color: var(--primary);
+}
+
+/* 2. ARTICLES TABLE CARD */
+.sale-items-card {
+  background: rgba(14, 25, 45, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-top: 0.25rem;
+}
+
+.sale-items-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sale-items-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.sale-table-head {
+  display: grid;
+  grid-template-columns: 1fr 90px 160px 120px 38px;
+  gap: 0.85rem;
+  padding: 0.65rem 1.25rem;
+  background: rgba(6, 13, 25, 0.6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  align-items: center;
+}
+
+.sale-table-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0;
+}
+
+.sale-table-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 160px 120px 38px;
+  gap: 0.85rem;
+  padding: 0.65rem 1.25rem;
+  align-items: center;
+  transition: background var(--transition-fast);
+}
+
+.sale-table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cell-product {
+  min-width: 0;
+}
+
+.cell-product select {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.cell-qty {
+  min-width: 0;
+}
+
+.cell-qty input {
+  width: 100% !important;
+  text-align: center;
+  box-sizing: border-box !important;
+}
+
+.cell-price {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.cell-price input {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.cell-subtotal {
+  text-align: right;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--emerald);
+  white-space: nowrap;
+}
+
+.cell-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.price-reset-hint {
+  font-size: 0.68rem;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+/* 3. SUMMARY BAR & ACTIONS */
+.sale-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.total-display-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.total-display-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.total-display-amount {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--emerald);
+  letter-spacing: -0.02em;
+}
+
+.footer-btn-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
 .modal-card {
   width: 100%;
   max-height: 90vh;
@@ -1182,135 +1598,6 @@ onMounted(async () => {
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 1.5rem;
-}
-
-.btn-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.btn-close:hover { color: var(--text-main); }
-
-.sale-top-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem 1.5rem;
-  margin-bottom: 1.5rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 1.25rem;
-}
-
-@media (max-width: 680px) {
-  .sale-top-grid {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-}
-
-.btn-link-action {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  font-weight: 600;
-  transition: opacity var(--transition-fast);
-}
-
-.btn-link-action:hover {
-  opacity: 0.8;
-}
-
-.items-header-title {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.line-col-product {
-  flex: 2.5;
-  min-width: 190px;
-}
-
-.line-col-qty {
-  width: 90px;
-  flex-shrink: 0;
-}
-
-.line-col-price {
-  flex: 1.6;
-  min-width: 150px;
-}
-
-.flex-1 { flex: 1; }
-.flex-2 { flex: 2; }
-
-.order-items-box {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
-}
-
-.order-items-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.articles-lines-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.article-line-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 0.85rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.line-subtotal {
-  display: flex;
-  flex-direction: column;
-  min-width: 100px;
-  text-align: right;
-  padding-bottom: 0.4rem;
-}
-
-.sale-summary-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.total-box {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-}
-
-.total-amount {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: var(--emerald);
-}
-
-.modal-actions {
-  display: flex;
-  gap: 0.75rem;
 }
 
 .sale-meta-card {

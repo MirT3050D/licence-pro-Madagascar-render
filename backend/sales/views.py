@@ -59,7 +59,7 @@ class VenteViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
-        if self.action == 'create':
+        if self.action in ['create', 'update', 'partial_update']:
             return VenteCreateSerializer
         return VenteSerializer
 
@@ -113,6 +113,28 @@ class VenteViewSet(viewsets.ModelViewSet):
         vente = serializer.save()
         read_serializer = VenteSerializer(vente)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        user = request.user
+        is_admin = (
+            user.is_staff or 
+            user.is_superuser or 
+            (user.role and user.role.point >= 50) or 
+            (user.role and user.role.nom == 'admin')
+        )
+        if not is_admin:
+            return Response(
+                {"error": "Permission refusée. Seul un administrateur (niveau 50) peut modifier des ventes."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        vente = serializer.save()
+        read_serializer = VenteSerializer(vente)
+        return Response(read_serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         user = request.user
