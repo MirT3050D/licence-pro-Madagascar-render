@@ -16,11 +16,12 @@ class MethodePaiementSerializer(serializers.ModelSerializer):
 class CommandeSerializer(serializers.ModelSerializer):
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_prix_achat = serializers.DecimalField(source='produit.prix_achat', max_digits=12, decimal_places=2, read_only=True)
+    produit_image = serializers.CharField(source='produit.image', read_only=True)
     sous_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = Commande
-        fields = ['id', 'produit', 'produit_nom', 'produit_prix_achat', 'quantite', 'prix_unitaire', 'sous_total', 'date']
+        fields = ['id', 'produit', 'produit_nom', 'produit_prix_achat', 'produit_image', 'quantite', 'prix_unitaire', 'sous_total', 'date']
 
 
 class CommandeItemInputSerializer(serializers.Serializer):

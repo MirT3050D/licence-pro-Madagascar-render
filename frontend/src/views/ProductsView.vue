@@ -27,9 +27,18 @@
 
     <div v-else-if="products.length" class="products-grid">
       <div v-for="prod in products" :key="prod.id" class="card product-card">
-        <!-- Top Card Row -->
+        <!-- Top Card Row with Product Photo or Fallback -->
         <div class="prod-card-top">
-          <div class="prod-icon-box">
+          <div v-if="prod.image" class="prod-img-box" :title="isGoogleDriveUrl(prod.image) ? 'Photo hébergée sur Google Drive' : 'Photo du produit'">
+            <img
+              :src="resolveImageUrl(prod.image)"
+              :alt="prod.nom"
+              class="prod-img"
+              loading="lazy"
+              @error="onCardImageError($event, prod)"
+            />
+          </div>
+          <div v-else class="prod-icon-box">
             <Package :size="24" />
           </div>
           <div class="prod-pricing">
@@ -124,6 +133,58 @@
             <input v-model="form.lien_achat" type="url" class="form-input" placeholder="https://fournisseur.com/item/..." />
           </div>
 
+          <!-- Image / Photo du produit (Lien Google Drive ou URL) -->
+          <div class="form-group">
+            <div class="flex items-center justify-between mb-1">
+              <label class="form-label" style="margin-bottom: 0;">Photo du produit (Lien Google Drive)</label>
+              <span v-if="isGoogleDriveUrl(form.image)" class="badge-drive text-xs">
+                <Check :size="12" /> Google Drive détecté
+              </span>
+            </div>
+
+            <div class="image-uploader-field">
+              <!-- Live Preview if link entered or file chosen -->
+              <div v-if="imagePreview || form.image" class="preview-container">
+                <img
+                  :src="imagePreview || resolveImageUrl(form.image)"
+                  alt="Aperçu photo"
+                  class="image-preview"
+                  @error="handlePreviewError"
+                />
+                <button type="button" @click="clearImage" class="btn-clear-preview" title="Supprimer la photo">
+                  <X :size="14" />
+                </button>
+              </div>
+
+              <!-- Google Drive URL input with icon -->
+              <div class="drive-input-wrapper">
+                <div class="input-with-icon">
+                  <Link2 :size="15" class="field-icon text-primary" />
+                  <input
+                    v-model="form.image"
+                    type="text"
+                    class="form-input drive-main-input"
+                    placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                    @input="imagePreview = null"
+                  />
+                </div>
+                <p class="drive-hint">
+                  💡 <strong>Google Drive :</strong> Collez le lien de partage du fichier photo (Assurez-vous que l'accès est défini sur <em>« Tous les utilisateurs disposant du lien »</em>).
+                </p>
+              </div>
+
+              <!-- Secondary local file option -->
+              <div class="upload-options-secondary">
+                <span class="text-xs text-muted">Ou importer un fichier local :</span>
+                <label class="btn btn-secondary btn-xs upload-btn">
+                  <Upload :size="13" />
+                  <span>Fichier local</span>
+                  <input type="file" accept="image/*" class="hidden-input" @change="onFileChange" />
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Guide d'activation (Instructions client)</label>
             <textarea v-model="form.description_activation" rows="3" class="form-textarea" placeholder="Ex: 1. Aller dans Paramètres > Activation..."></textarea>
@@ -152,6 +213,105 @@
         </div>
 
         <div class="modal-body detail-grid">
+          <!-- Product Photo Header & Controls -->
+          <div class="detail-product-photo-card">
+            <div class="detail-photo-wrapper">
+              <img
+                v-if="selectedProduct.image"
+                :src="resolveImageUrl(selectedProduct.image)"
+                :alt="selectedProduct.nom"
+                class="detail-photo-img"
+                @error="onCardImageError($event, selectedProduct)"
+              />
+              <div v-else class="detail-photo-placeholder">
+                <Package :size="32" class="text-muted" />
+                <span class="text-xs text-muted">Sans photo</span>
+              </div>
+            </div>
+
+            <div class="detail-photo-info">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-muted">Illustration produit</span>
+                <span v-if="isGoogleDriveUrl(selectedProduct.image)" class="badge-drive">
+                  Google Drive
+                </span>
+              </div>
+
+              <!-- Normal view buttons -->
+              <div v-if="!editingPhotoLink" class="detail-photo-ctrls">
+                <button
+                  type="button"
+                  @click="startEditingPhotoLink"
+                  class="btn btn-secondary btn-xs"
+                  title="Modifier ou coller le lien Google Drive"
+                >
+                  <Link2 :size="13" />
+                  <span>{{ selectedProduct.image ? 'Modifier le lien' : 'Ajouter lien Google Drive' }}</span>
+                </button>
+
+                <a
+                  v-if="selectedProduct.image && isGoogleDriveUrl(selectedProduct.image)"
+                  :href="getGoogleDriveViewerUrl(selectedProduct.image)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-secondary btn-xs"
+                  title="Ouvrir dans Google Drive"
+                >
+                  <ExternalLink :size="13" />
+                  <span>Ouvrir sur Drive</span>
+                </a>
+
+                <label class="btn btn-secondary btn-xs upload-btn" title="Téléverser un fichier local">
+                  <Upload :size="13" />
+                  <span>{{ uploadingPhoto ? 'Envoi...' : 'Fichier' }}</span>
+                  <input type="file" accept="image/*" class="hidden-input" @change="handleDetailPhotoUpload" :disabled="uploadingPhoto" />
+                </label>
+
+                <button
+                  v-if="selectedProduct.image"
+                  type="button"
+                  @click="removeDetailPhoto"
+                  class="btn btn-secondary btn-xs text-danger"
+                  title="Supprimer la photo"
+                >
+                  <Trash2 :size="13" />
+                </button>
+              </div>
+
+              <!-- Inline editing form for Drive link -->
+              <div v-else class="photo-edit-form">
+                <div class="input-with-icon">
+                  <Link2 :size="14" class="field-icon text-primary" />
+                  <input
+                    v-model="photoLinkInput"
+                    type="text"
+                    class="form-input text-xs drive-input-inline"
+                    placeholder="Collez le lien Google Drive..."
+                    @keydown.enter.prevent="savePhotoLink"
+                  />
+                </div>
+                <div class="photo-edit-actions">
+                  <button
+                    type="button"
+                    @click="savePhotoLink"
+                    class="btn btn-primary btn-xs"
+                    :disabled="savingPhotoLink"
+                  >
+                    <Check :size="13" />
+                    <span>{{ savingPhotoLink ? 'Enregistrement...' : 'Enregistrer' }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="cancelEditingPhotoLink"
+                    class="btn btn-secondary btn-xs"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Guide d'activation -->
           <div class="detail-box">
             <div class="box-header">
@@ -246,16 +406,25 @@ import {
   X,
   FileText,
   Copy,
-  Clock
+  Clock,
+  Upload,
+  Link2,
+  Check
 } from '@lucide/vue'
 import apiClient from '../api/client'
+import {
+  resolveImageUrl,
+  isGoogleDriveUrl,
+  getGoogleDriveViewerUrl,
+  getGoogleDriveThumbnailFallback
+} from '../utils/imageHelper'
 
 const products = ref([])
 const loading = ref(false)
 const searchQuery = ref('')
 const submitting = ref(false)
 
-// Modals
+// Modals & Photos
 const showCreateModal = ref(false)
 const showDetailModal = ref(false)
 const showPriceModal = ref(false)
@@ -264,14 +433,125 @@ const activationGuide = ref('')
 const newPrice = ref(null)
 const copied = ref(false)
 
+const imagePreview = ref(null)
+const selectedFile = ref(null)
+const uploadingPhoto = ref(false)
+
+// Inline Google Drive photo link editor in Detail Modal
+const editingPhotoLink = ref(false)
+const photoLinkInput = ref('')
+const savingPhotoLink = ref(false)
+
 const form = ref({
   nom: '',
   description: '',
+  image: '',
   prix_achat: '',
   prix_initial: '',
   lien_achat: '',
   description_activation: '',
 })
+
+function onFileChange(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  selectedFile.value = file
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    imagePreview.value = event.target.result
+    form.value.image = event.target.result // base64 fallback
+  }
+  reader.readAsDataURL(file)
+}
+
+function clearImage() {
+  selectedFile.value = null
+  imagePreview.value = null
+  form.value.image = ''
+}
+
+function onCardImageError(event, prod) {
+  const img = event.target
+  if (!img) return
+  if (prod?.image && isGoogleDriveUrl(prod.image) && !img.dataset.fallbackTried) {
+    img.dataset.fallbackTried = 'true'
+    img.src = getGoogleDriveThumbnailFallback(prod.image)
+    return
+  }
+  img.style.display = 'none'
+  if (img.parentElement) {
+    img.parentElement.classList.add('img-load-failed')
+  }
+}
+
+function handlePreviewError(event) {
+  const img = event.target
+  if (!img) return
+  if (form.value.image && isGoogleDriveUrl(form.value.image) && !img.dataset.fallbackTried) {
+    img.dataset.fallbackTried = 'true'
+    img.src = getGoogleDriveThumbnailFallback(form.value.image)
+  }
+}
+
+function startEditingPhotoLink() {
+  photoLinkInput.value = selectedProduct.value?.image || ''
+  editingPhotoLink.value = true
+}
+
+function cancelEditingPhotoLink() {
+  editingPhotoLink.value = false
+  photoLinkInput.value = ''
+}
+
+async function savePhotoLink() {
+  if (!selectedProduct.value) return
+  savingPhotoLink.value = true
+  try {
+    const trimmed = photoLinkInput.value.trim()
+    const res = await apiClient.patch(`/produits/${selectedProduct.value.id}/`, {
+      image: trimmed
+    })
+    selectedProduct.value.image = res.data.image
+    editingPhotoLink.value = false
+    await fetchProducts()
+  } catch (err) {
+    alert("Erreur lors de l'enregistrement du lien de l'image.")
+  } finally {
+    savingPhotoLink.value = false
+  }
+}
+
+async function handleDetailPhotoUpload(e) {
+  const file = e.target.files?.[0]
+  if (!file || !selectedProduct.value) return
+  uploadingPhoto.value = true
+  try {
+    const formData = new FormData()
+    formData.append('image', file)
+    const res = await apiClient.post(`/produits/${selectedProduct.value.id}/upload-image/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    selectedProduct.value.image = res.data.image
+    await fetchProducts()
+  } catch (err) {
+    alert("Erreur lors de l'envoi de la photo.")
+  } finally {
+    uploadingPhoto.value = false
+  }
+}
+
+async function removeDetailPhoto() {
+  if (!confirm("Retirer la photo de ce produit ?")) return
+  try {
+    await apiClient.patch(`/produits/${selectedProduct.value.id}/`, { image: '' })
+    selectedProduct.value.image = ''
+    editingPhotoLink.value = false
+    photoLinkInput.value = ''
+    await fetchProducts()
+  } catch (err) {
+    alert("Erreur lors de la suppression de la photo.")
+  }
+}
 
 async function fetchProducts() {
   loading.value = true
@@ -291,18 +571,34 @@ function openCreateModal() {
   form.value = {
     nom: '',
     description: '',
+    image: '',
     prix_achat: '',
     prix_initial: '',
     lien_achat: '',
     description_activation: '',
   }
+  clearImage()
   showCreateModal.value = true
 }
 
 async function submitCreateProduct() {
   submitting.value = true
   try {
-    await apiClient.post('/produits/', form.value)
+    const res = await apiClient.post('/produits/', form.value)
+    const newProd = res.data
+
+    if (selectedFile.value && newProd.id) {
+      try {
+        const formData = new FormData()
+        formData.append('image', selectedFile.value)
+        await apiClient.post(`/produits/${newProd.id}/upload-image/`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      } catch (uploadErr) {
+        console.warn("Échec upload multipart, conservé en base64:", uploadErr)
+      }
+    }
+
     showCreateModal.value = false
     await fetchProducts()
   } catch (err) {
@@ -438,6 +734,220 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.prod-img-box {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 15px rgba(0, 210, 255, 0.15);
+}
+
+.prod-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.product-card:hover .prod-img {
+  transform: scale(1.1);
+}
+
+.badge-drive {
+  background: rgba(0, 210, 255, 0.12);
+  color: #00d2ff;
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.image-uploader-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preview-container {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1.5px solid var(--primary-color);
+  box-shadow: 0 0 15px rgba(0, 210, 255, 0.25);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.btn-clear-preview {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-clear-preview:hover {
+  background: #ef4444;
+}
+
+.drive-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input-with-icon .field-icon {
+  position: absolute;
+  left: 0.75rem;
+  pointer-events: none;
+}
+
+.input-with-icon .form-input {
+  padding-left: 2.3rem;
+}
+
+.drive-main-input {
+  width: 100%;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.drive-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.drive-hint strong {
+  color: var(--primary-color);
+}
+
+.drive-hint em {
+  color: #38bdf8;
+  font-style: normal;
+}
+
+.upload-options-secondary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.15rem;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.detail-product-photo-card {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.15rem;
+  background: rgba(0, 210, 255, 0.05);
+  border: 1px solid rgba(0, 210, 255, 0.2);
+  border-radius: var(--radius-md);
+}
+
+.detail-photo-wrapper {
+  width: 82px;
+  height: 82px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.detail-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detail-photo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.detail-photo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex: 1;
+}
+
+.detail-photo-ctrls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.photo-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 480px;
+}
+
+.photo-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.drive-input-inline {
+  width: 100%;
+  font-family: monospace;
+}
+
+.img-load-failed {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
 .prod-icon-box {

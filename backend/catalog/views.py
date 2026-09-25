@@ -62,6 +62,33 @@ class ProduitViewSet(viewsets.ModelViewSet):
         )
         return Response(ActivationSerializer(activation).data)
 
+    @action(detail=True, methods=['post'], url_path='upload-image')
+    def upload_image(self, request, pk=None):
+        produit = self.get_object()
+        file_obj = request.FILES.get('image')
+        image_url = request.data.get('image_url') or request.data.get('image')
+
+        if file_obj:
+            import os, uuid
+            from django.conf import settings
+            ext = file_obj.name.split('.')[-1].lower() if '.' in file_obj.name else 'png'
+            filename = f"prod_{produit.id}_{uuid.uuid4().hex[:6]}.{ext}"
+            save_dir = settings.MEDIA_ROOT / 'produits'
+            os.makedirs(save_dir, exist_ok=True)
+            file_path = save_dir / filename
+            with open(file_path, 'wb+') as destination:
+                for chunk in file_obj.chunks():
+                    destination.write(chunk)
+            produit.image = f"/media/produits/{filename}"
+            produit.save()
+            return Response(ProduitSerializer(produit).data)
+        elif image_url:
+            produit.image = image_url.strip()
+            produit.save()
+            return Response(ProduitSerializer(produit).data)
+        else:
+            return Response({'error': 'Aucun fichier image ou URL fourni.'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class PrixViewSet(viewsets.ModelViewSet):
     queryset = Prix.objects.all()

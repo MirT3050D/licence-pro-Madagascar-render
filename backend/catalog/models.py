@@ -4,7 +4,7 @@ from django.db import models
 class Produit(models.Model):
     nom = models.CharField(max_length=150)
     description = models.TextField(blank=True, null=True)
-    image = models.CharField(max_length=255, blank=True, null=True)
+    image = models.TextField(blank=True, null=True)
     lien_achat = models.TextField(blank=True, null=True)
     prix_achat = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)

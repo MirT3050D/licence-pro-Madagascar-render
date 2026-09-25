@@ -404,9 +404,17 @@
           <div class="section-title">Articles de la commande</div>
           <div class="detail-items-table">
             <div v-for="cmd in selectedSale.commandes" :key="cmd.id" class="detail-item-row">
-              <div class="item-name-col">
-                <strong>{{ cmd.produit?.nom }}</strong>
-                <p class="text-xs text-muted">{{ cmd.produit?.description }}</p>
+              <div class="item-prod-wrapper">
+                <div v-if="cmd.produit_image" class="sale-item-thumb">
+                  <img :src="resolveImageUrl(cmd.produit_image)" :alt="cmd.produit_nom" class="sale-item-thumb-img" />
+                </div>
+                <div v-else class="sale-item-thumb-fallback">
+                  <Package :size="18" />
+                </div>
+                <div class="item-name-col">
+                  <strong>{{ cmd.produit_nom || cmd.produit?.nom }}</strong>
+                  <p class="text-xs text-muted" v-if="cmd.produit?.description">{{ cmd.produit?.description }}</p>
+                </div>
               </div>
               <div class="item-calc-col">
                 <span>{{ cmd.quantite }} x {{ formatPrice(cmd.prix_unitaire) }}</span>
@@ -448,11 +456,13 @@ import {
   Users,
   Zap,
   RotateCcw,
-  Lock
+  Lock,
+  Package
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
+import { resolveImageUrl } from '../utils/imageHelper'
 
 const route = useRoute()
 const { user, isSuperAdmin } = useAuth()
@@ -1149,10 +1159,55 @@ onMounted(async () => {
 }
 
 .detail-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 1rem;
+  padding: 0.85rem 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.item-prod-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.sale-item-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  background: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sale-item-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sale-item-thumb-fallback {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .act-guide-item {
