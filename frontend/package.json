@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:preview": "vite build && electron .",
-    "electron:build": "vite build && npx @electron/packager . \"Licence Pro Madagascar\" --platform=win32 --arch=x64 --out=dist-app --overwrite --prune=false"
+    "electron:build": "vite build && npx @electron/packager . \"Licence Pro Madagascar\" --platform=win32 --arch=x64 --out=dist-app --overwrite --prune=false",
+    "build:electron": "npm run electron:build"
   },
   "dependencies": {
     "@lucide/vue": "^1.48.0",
