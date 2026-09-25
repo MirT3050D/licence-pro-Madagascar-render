@@ -21,7 +21,23 @@ def get_vertex_gemini_model(model_name="gemini-2.5-flash"):
         sa_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
         if sa_json:
             try:
-                info = json.loads(sa_json)
+                clean_json = sa_json.strip()
+                if (clean_json.startswith("'") and clean_json.endswith("'")) or (clean_json.startswith('"') and clean_json.endswith('"')):
+                    clean_json = clean_json[1:-1]
+                
+                # Support encodage Base64 éventuel
+                import base64
+                try:
+                    decoded = base64.b64decode(clean_json).decode('utf-8')
+                    if "private_key" in decoded:
+                        clean_json = decoded
+                except Exception:
+                    pass
+
+                info = json.loads(clean_json)
+                if 'private_key' in info and isinstance(info['private_key'], str):
+                    info['private_key'] = info['private_key'].replace('\\n', '\n')
+
                 credentials = service_account.Credentials.from_service_account_info(info)
                 project = info.get("project_id", os.getenv("VERTEXAI_PROJECT", "jhpiego-504511"))
                 vertexai.init(project=project, location=os.getenv("VERTEXAI_LOCATION", "us-central1"), credentials=credentials)
