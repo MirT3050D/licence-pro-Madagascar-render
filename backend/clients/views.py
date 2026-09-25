@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions
+from django.db.models import Count
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Provenance, Client
@@ -6,9 +7,33 @@ from .serializers import ProvenanceSerializer, ClientSerializer
 
 
 class ProvenanceViewSet(viewsets.ModelViewSet):
-    queryset = Provenance.objects.all()
+    queryset = Provenance.objects.annotate(annotated_clients_count=Count('clients')).order_by('label')
     serializer_class = ProvenanceSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Provenance.objects.annotate(annotated_clients_count=Count('clients'))
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(label__icontains=search.strip())
+        return qs.order_by('-annotated_clients_count', 'label')
+
+    def destroy(self, request, *args, **kwargs):
+        provenance = self.get_object()
+        client_count = provenance.clients.count()
+        force = request.query_params.get('force', 'false').lower() in ('true', '1')
+
+        if client_count > 0 and not force:
+            return Response(
+                {
+                    'error': f"Impossible de supprimer '{provenance.label}' : {client_count} client(s) y sont rattaché(s).",
+                    'client_count': client_count,
+                    'can_force': True
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 
 class ClientViewSet(viewsets.ModelViewSet):

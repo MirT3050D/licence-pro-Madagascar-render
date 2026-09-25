@@ -46,10 +46,38 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class RoleViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Role.objects.all()
+class RoleViewSet(viewsets.ModelViewSet):
+    queryset = Role.objects.all().order_by('-point', 'label')
     serializer_class = RoleSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def _check_admin(self, user):
+        return (
+            user.is_staff or 
+            user.is_superuser or 
+            (user.role and user.role.point >= 50) or 
+            (user.role and user.role.nom == 'admin')
+        )
+
+    def create(self, request, *args, **kwargs):
+        if not self._check_admin(request.user):
+            return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if not self._check_admin(request.user):
+            return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not self._check_admin(request.user):
+            return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
+        role = self.get_object()
+        if role.nom in ['admin', 'media_buyer']:
+            return Response({'error': f"Le rôle système '{role.label}' est protégé et ne peut pas être supprimé."}, status=status.HTTP_400_BAD_REQUEST)
+        if role.utilisateurs.count() > 0:
+            return Response({'error': f"Impossible de supprimer ce rôle : {role.utilisateurs.count()} utilisateur(s) lui sont assigné(s)."}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
 
 class UtilisateurViewSet(viewsets.ModelViewSet):
@@ -64,6 +92,42 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
             (user.role and user.role.point >= 50) or 
             (user.role and user.role.nom == 'admin')
         )
+
+    def get_queryset(self):
+        qs = Utilisateur.objects.all().select_related('role')
+        search = self.request.query_params.get('search')
+        if search:
+            query = search.strip()
+            qs = qs.filter(nom__icontains=query) | qs.filter(prenom__icontains=query) | qs.filter(email__icontains=query)
+        role_id = self.request.query_params.get('role')
+        if role_id:
+            qs = qs.filter(role_id=role_id)
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None and is_active != '':
+            qs = qs.filter(is_active=is_active.lower() in ('true', '1'))
+        return qs.order_by('-created_at')
+
+    def create(self, request, *args, **kwargs):
+        if not self._check_admin(request.user):
+            return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
+        
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'error': "L'adresse email est obligatoire."}, status=status.HTTP_400_BAD_REQUEST)
+        if Utilisateur.objects.filter(email__iexact=email).exists():
+            return Response({'error': f"Un utilisateur avec l'adresse '{email}' existe déjà."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        # Configurer automatiquement is_staff si rôle admin
+        if user.role and (user.role.point >= 50 or user.role.nom == 'admin'):
+            user.is_staff = True
+            user.save()
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(UtilisateurSerializer(user).data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
         if not self._check_admin(request.user):
@@ -81,7 +145,31 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
         target_user = self.get_object()
         if target_user == request.user:
             return Response({'error': "Vous ne pouvez pas supprimer votre propre compte."}, status=status.HTTP_400_BAD_REQUEST)
+        if target_user.ventes.count() > 0:
+            return Response(
+                {'error': f"Impossible de supprimer cet utilisateur : {target_user.ventes.count()} vente(s) lui sont associées. Vous pouvez plutôt désactiver son compte."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if target_user.role and target_user.role.point >= 50:
+            other_admins = Utilisateur.objects.filter(is_active=True, role__point__gte=50).exclude(id=target_user.id).exists()
+            if not other_admins:
+                return Response({'error': "Action impossible : il s'agit du dernier administrateur actif."}, status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='reset-password')
+    def reset_password(self, request, pk=None):
+        if not self._check_admin(request.user):
+            return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
+        target_user = self.get_object()
+        password = request.data.get('password', '').strip()
+        if not password or len(password) < 6:
+            return Response({'error': "Le mot de passe doit comporter au moins 6 caractères."}, status=status.HTTP_400_BAD_REQUEST)
+        target_user.set_password(password)
+        target_user.save()
+        return Response({
+            'status': 'success',
+            'message': f"Le mot de passe de {target_user.prenom} {target_user.nom} a été réinitialisé avec succès."
+        })
 
     @action(detail=True, methods=['post'])
     def toggle_active(self, request, pk=None):
@@ -135,6 +223,7 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
             'user': UtilisateurSerializer(target_user).data,
             'message': f"Le rôle de {target_user.prenom} {target_user.nom} a été modifié en {new_role.label} ({new_role.point} pts)."
         })
+
 
 
 class ProfileView(APIView):

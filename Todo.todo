@@ -54,6 +54,30 @@ CRUD Client
     Base
         Client, Provenance
 
+CRUD Provenance (Canaux d'acquisition)
+    Affichage
+        Page dédiée (/provenances) avec KPIs, recherche, suggestions rapides, création, modification et suppression sécurisée
+        Bouton d'accès direct et création rapide inline "+ Nouveau canal" dans le formulaire Client
+    Métier
+        Calcul dynamique des clients rattachés (clients_count)
+        Suppression avec avertissement et paramètre force si des clients sont rattachés
+    Base
+        Provenance
+
+CRUD Équipe & Utilisateurs
+    Affichage
+        Page dédiée (/utilisateurs) avec KPIs (Total, Admins, Vendeurs, En attente)
+        Formulaire de création directe de membres avec mot de passe temporaire généré
+        Modification des coordonnées, rôle et statut d'accès
+        Modal de réinitialisation de mot de passe par l'administrateur
+        Activation / Désactivation instantanée
+        Suppression sécurisée avec contrôle d'intégrité
+    Métier
+        Attribution dynamique des rôles et points d'accès
+        Actions API custom (reset-password, toggle_active, change-role)
+    Base
+        Utilisateur, Role
+
 CRUD Vente
     Affichage
         Interface pour créer une vente (sélection client, ajout multi-produits avec quantité et prix unitaire, choix méthode de paiement)

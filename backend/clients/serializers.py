@@ -3,9 +3,17 @@ from .models import Provenance, Client
 
 
 class ProvenanceSerializer(serializers.ModelSerializer):
+    clients_count = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Provenance
-        fields = ['id', 'label']
+        fields = ['id', 'label', 'clients_count']
+
+    def get_clients_count(self, obj):
+        if hasattr(obj, 'annotated_clients_count'):
+            return obj.annotated_clients_count
+        return obj.clients.count()
+
 
 
 class ClientSerializer(serializers.ModelSerializer):

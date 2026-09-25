@@ -8,6 +8,8 @@ import ClientsView from '../views/ClientsView.vue'
 import SalesView from '../views/SalesView.vue'
 import PaymentMethodsView from '../views/PaymentMethodsView.vue'
 import ProfileView from '../views/ProfileView.vue'
+import ProvenancesView from '../views/ProvenancesView.vue'
+import UsersView from '../views/UsersView.vue'
 
 const routes = [
   {
@@ -32,6 +34,11 @@ const routes = [
     component: ClientsView,
   },
   {
+    path: '/provenances',
+    name: 'provenances',
+    component: ProvenancesView,
+  },
+  {
     path: '/ventes',
     name: 'ventes',
     component: SalesView,
@@ -40,6 +47,11 @@ const routes = [
     path: '/paiements',
     name: 'paiements',
     component: PaymentMethodsView,
+  },
+  {
+    path: '/utilisateurs',
+    name: 'utilisateurs',
+    component: UsersView,
   },
   {
     path: '/profil',

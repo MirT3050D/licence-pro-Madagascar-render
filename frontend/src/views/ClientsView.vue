@@ -22,10 +22,16 @@
         </select>
       </div>
 
-      <button @click="openCreateModal" class="btn btn-primary">
-        <Plus :size="18" />
-        <span>Nouveau Client</span>
-      </button>
+      <div class="header-actions">
+        <router-link to="/provenances" class="btn btn-secondary">
+          <Share2 :size="16" />
+          <span>Gérer les provenances</span>
+        </router-link>
+        <button @click="openCreateModal" class="btn btn-primary">
+          <Plus :size="18" />
+          <span>Nouveau Client</span>
+        </button>
+      </div>
     </div>
 
     <!-- Clients Table -->
@@ -108,8 +114,45 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Provenance (Canal d'acquisition)</label>
-            <select v-model="form.provenance_id" class="form-select">
+            <div class="flex-between">
+              <label class="form-label">Provenance (Canal d'acquisition)</label>
+              <button
+                v-if="!showInlineProv"
+                type="button"
+                @click="showInlineProv = true"
+                class="text-xs text-primary btn-link"
+              >
+                + Nouveau canal
+              </button>
+            </div>
+
+            <div v-if="showInlineProv" class="inline-prov-row animate-fade">
+              <input
+                v-model="newProvInput"
+                type="text"
+                class="form-input form-input-sm"
+                placeholder="Ex: TikTok, Instagram..."
+                @keyup.enter.prevent="quickCreateProvenance"
+                autofocus
+              />
+              <button
+                type="button"
+                @click="quickCreateProvenance"
+                class="btn btn-primary btn-xs"
+                :disabled="!newProvInput.trim() || creatingProv"
+              >
+                <span>Ajouter</span>
+              </button>
+              <button
+                type="button"
+                @click="showInlineProv = false"
+                class="btn btn-secondary btn-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <select v-else v-model="form.provenance_id" class="form-select">
               <option :value="null">-- Choisir un canal --</option>
               <option v-for="prov in provenances" :key="prov.id" :value="prov.id">
                 {{ prov.label }}
@@ -181,7 +224,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Search, Plus, History, Trash2, X } from '@lucide/vue'
+import { Search, Plus, History, Trash2, X, Share2 } from '@lucide/vue'
 import apiClient from '../api/client'
 
 const clients = ref([])
@@ -195,11 +238,33 @@ const showHistoryModal = ref(false)
 const selectedClientHistory = ref(null)
 const submitting = ref(false)
 
+const showInlineProv = ref(false)
+const newProvInput = ref('')
+const creatingProv = ref(false)
+
 const form = ref({
   nom: '',
   numero: '',
   provenance_id: null,
 })
+
+async function quickCreateProvenance() {
+  const label = newProvInput.value.trim()
+  if (!label) return
+  creatingProv.value = true
+  try {
+    const res = await apiClient.post('/clients/provenances/', { label })
+    await fetchProvenances()
+    form.value.provenance_id = res.data.id
+    newProvInput.value = ''
+    showInlineProv.value = false
+  } catch (err) {
+    alert(err.response?.data?.label?.[0] || err.response?.data?.error || "Erreur lors de la création de la provenance")
+  } finally {
+    creatingProv.value = false
+  }
+}
+
 
 async function fetchClients() {
   loading.value = true
@@ -446,5 +511,30 @@ onMounted(() => {
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.inline-prov-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.form-input-sm {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
 }
 </style>

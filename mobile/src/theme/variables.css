@@ -1,0 +1,101 @@
+/* Core Ionic CSS */
+@import '@ionic/vue/css/core.css';
+@import '@ionic/vue/css/normalize.css';
+@import '@ionic/vue/css/structure.css';
+@import '@ionic/vue/css/typography.css';
+
+/* Optional Ionic utilities */
+@import '@ionic/vue/css/padding.css';
+@import '@ionic/vue/css/float-elements.css';
+@import '@ionic/vue/css/text-alignment.css';
+@import '@ionic/vue/css/text-transformation.css';
+@import '@ionic/vue/css/flex-utils.css';
+@import '@ionic/vue/css/display.css';
+
+/* Ionic Dark Palette */
+@import '@ionic/vue/css/palettes/dark.always.css';
+
+:root {
+  /* Brand Emerald / Teal Theme */
+  --ion-color-primary: #0D9488;
+  --ion-color-primary-rgb: 13, 148, 136;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #0b7f74;
+  --ion-color-primary-tint: #25a499;
+
+  --ion-color-secondary: #3B82F6;
+  --ion-color-secondary-rgb: 59, 130, 246;
+  --ion-color-secondary-contrast: #ffffff;
+  --ion-color-secondary-contrast-rgb: 255, 255, 255;
+  --ion-color-secondary-shade: #3473d9;
+  --ion-color-secondary-tint: #4f8ff7;
+
+  --ion-color-success: #10B981;
+  --ion-color-warning: #F59E0B;
+  --ion-color-danger: #EF4444;
+
+  /* App Backgrounds & Surfaces */
+  --ion-background-color: #0B1120;
+  --ion-background-color-rgb: 11, 17, 32;
+
+  --ion-text-color: #F8FAFC;
+  --ion-text-color-rgb: 248, 250, 252;
+
+  --ion-card-background: #151F32;
+  --ion-item-background: transparent;
+
+  /* Global typography */
+  --ion-font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  --ion-tab-bar-background: #0B1120;
+  --ion-tab-bar-border-color: rgba(255, 255, 255, 0.08);
+  --ion-toolbar-background: #0B1120;
+  --ion-toolbar-border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Custom utility & mobile polish */
+* {
+  font-family: var(--ion-font-family);
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #0B1120;
+  color: #F8FAFC;
+  user-select: none;
+}
+
+/* Smooth glassmorphism & cards */
+.glass-card {
+  background: rgba(21, 31, 50, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.brand-gradient {
+  background: linear-gradient(135deg, #0D9488 0%, #0284C7 100%);
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}

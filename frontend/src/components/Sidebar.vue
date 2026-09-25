@@ -37,9 +37,21 @@
         <span>Clients</span>
       </router-link>
 
+      <router-link to="/provenances" class="nav-item" :class="{ active: $route.path.startsWith('/provenances') }">
+        <Share2 :size="20" />
+        <span>Canaux de Provenance</span>
+      </router-link>
+
       <router-link to="/paiements" class="nav-item" :class="{ active: $route.path.startsWith('/paiements') }">
         <CreditCard :size="20" />
         <span>Modes de règlement</span>
+      </router-link>
+
+      <div v-if="isSuperAdmin" class="nav-section-title">ADMINISTRATION</div>
+
+      <router-link v-if="isSuperAdmin" to="/utilisateurs" class="nav-item" :class="{ active: $route.path.startsWith('/utilisateurs') }">
+        <UserCheck :size="20" />
+        <span>Équipe & Utilisateurs</span>
       </router-link>
 
       <div class="nav-section-title">COMPTE & PERFORMANCE</div>
@@ -80,11 +92,13 @@ import {
   CreditCard,
   User,
   LogOut,
+  Share2,
+  UserCheck,
 } from '@lucide/vue'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
-const { user, logout } = useAuth()
+const { user, logout, isSuperAdmin } = useAuth()
 
 const userInitials = computed(() => {
   if (!user.value) return 'LP'

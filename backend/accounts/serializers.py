@@ -19,16 +19,25 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     password = serializers.CharField(write_only=True, required=False)
+    ventes_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Utilisateur
-        fields = ['id', 'nom', 'prenom', 'numero', 'email', 'role', 'role_id', 'password', 'is_active', 'created_at']
+        fields = [
+            'id', 'nom', 'prenom', 'numero', 'email', 'role', 'role_id',
+            'password', 'is_active', 'is_staff', 'is_superuser', 'created_at', 'ventes_count'
+        ]
+
+    def get_ventes_count(self, obj):
+        return obj.ventes.count()
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
         user = Utilisateur(**validated_data)
         if password:
             user.set_password(password)
+        else:
+            user.set_unusable_password()
         user.save()
         return user
 
@@ -40,6 +49,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
