@@ -11,6 +11,17 @@ from clients.models import Client
 from sales.models import MethodePaiement
 
 
+def get_vertex_gemini_model(model_name="gemini-2.5-flash"):
+    try:
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
+        vertexai.init(location=os.getenv("VERTEXAI_LOCATION", "us-central1"))
+        return GenerativeModel(model_name)
+    except Exception as e:
+        print(f"[Vertex AI Init Warning]: {e}")
+        return None
+
+
 class AIParsingView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -34,18 +45,21 @@ class AIParsingView(APIView):
             for m in MethodePaiement.objects.filter(is_active=True)
         ]
 
-        # Vérifier si une clé d'API LLM (Gemini ou OpenAI) est disponible
+        parsed_data = None
+
+        # 1. Vertex AI en priorité (authentification gcloud ADC locale)
+        parsed_data = self._call_vertex_parsing(texte, produits_catalogue, methodes_paiement)
+
+        # 2. Clé Gemini ou OpenAI si Vertex AI indisponible
         gemini_api_key = os.getenv('GEMINI_API_KEY')
         openai_api_key = os.getenv('OPENAI_API_KEY')
 
-        parsed_data = None
-
-        if gemini_api_key:
+        if not parsed_data and gemini_api_key:
             parsed_data = self._call_gemini(texte, produits_catalogue, methodes_paiement, gemini_api_key)
-        elif openai_api_key:
+        elif not parsed_data and openai_api_key:
             parsed_data = self._call_openai(texte, produits_catalogue, methodes_paiement, openai_api_key)
         
-        # Fallback intelligent local si aucune clé d'API ou si échec de l'appel
+        # 3. Fallback intelligent local si aucune API disponible
         if not parsed_data:
             parsed_data = self._fallback_rule_based_parser(texte, produits_catalogue, methodes_paiement)
 
@@ -58,6 +72,48 @@ class AIParsingView(APIView):
                     parsed_data['client_numero'] = client_existant.numero
 
         return Response(parsed_data)
+
+    def _call_vertex_parsing(self, texte, catalogue, methodes):
+        try:
+            model = get_vertex_gemini_model("gemini-2.5-flash")
+            if not model:
+                return None
+
+            system_prompt = (
+                "Tu es l'assistant IA intelligent de 'Licence Pro Madagascar'. "
+                "Ton rôle est d'analyser les messages bruts de clients (en français, malgache ou argot local) "
+                "et d'extraire les données nécessaires pour pré-remplir un bon de commande de licences logicielles.\n\n"
+                "Tu dois impérativement faire correspondre les produits demandés avec le catalogue fourni ci-dessous. "
+                "Si un produit demandé ressemble à un produit du catalogue (ex: 'win 11' -> 'Windows 11 Pro', 'office' -> 'Microsoft Office 365'), "
+                "sélectionne l'ID et le nom du catalogue.\n\n"
+                f"CATALOGUE DISPONIBLE:\n{json.dumps(catalogue, ensure_ascii=False, indent=2)}\n\n"
+                f"MÉTHODES DE PAIEMENT DISPONIBLES:\n{json.dumps(methodes, ensure_ascii=False, indent=2)}\n\n"
+                "Format attendu STRICTEMENT en JSON:\n"
+                "{\n"
+                "  \"client_nom\": string,\n"
+                "  \"client_numero\": string,\n"
+                "  \"methode_paiement_id\": number ou null,\n"
+                "  \"articles\": [\n"
+                "    {\n"
+                "      \"produit_id\": number,\n"
+                "      \"produit_nom\": string,\n"
+                "      \"quantite\": number,\n"
+                "      \"prix_unitaire\": number\n"
+                "    }\n"
+                "  ],\n"
+                "  \"notes\": string\n"
+                "}"
+            )
+
+            prompt = f"{system_prompt}\n\nMESSAGE DU CLIENT À ANALYSER:\n\"\"\"\n{texte}\n\"\"\""
+            response = model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            print(f"[Vertex AI Parsing Info]: {e}")
+            return None
 
     def _call_gemini(self, texte, catalogue, methodes, api_key):
         """Appel officiel à l'API Google Gemini avec extraction JSON structurée"""
@@ -222,14 +278,15 @@ class AIChatView(APIView):
         role_label = user.role.label if user.role else 'Vendeur'
         point = user.role.point if user.role else 10
 
-        gemini_api_key = os.getenv('GEMINI_API_KEY')
+        # 1. Appel Vertex AI en priorité (authentification gcloud ADC locale)
+        chat_response = self._call_vertex_chat(message, history, catalogue_info, methodes, user, role_label, point)
 
-        # 2. Appel Gemini si clé dispo
-        chat_response = None
-        if gemini_api_key:
+        # 2. Appel Gemini API directe si Vertex AI échoue et clé dispo
+        gemini_api_key = os.getenv('GEMINI_API_KEY')
+        if not chat_response and gemini_api_key:
             chat_response = self._call_gemini_chat(message, history, catalogue_info, methodes, user, role_label, point, gemini_api_key)
 
-        # 3. Fallback conversationnel si API indisponible
+        # 3. Fallback conversationnel local si APIs indisponibles
         if not chat_response:
             chat_response = self._fallback_chat(message, catalogue_info, methodes)
 
@@ -243,6 +300,60 @@ class AIChatView(APIView):
                     chat_response['order_intent']['client_numero'] = client_existant.numero
 
         return Response(chat_response)
+
+    def _call_vertex_chat(self, message, history, catalogue, methodes, user, role_label, point):
+        try:
+            model = get_vertex_gemini_model("gemini-2.5-flash")
+            if not model:
+                return None
+
+            system_instruction = (
+                "Tu es l'assistant IA officiel, intelligent, chaleureux et polyvalent de 'Licence Pro Madagascar'. "
+                "Tu dialogues avec les membres de l'équipe (Administrateurs et Media Buyers/Vendeurs).\n\n"
+                f"UTILISATEUR ACTUEL: {user.prenom} {user.nom} ({role_label}, Niveau de permission: {point} pts).\n\n"
+                "TES MISSIONS ET CAPACITÉS:\n"
+                "1. Répondre courtoisement, avec pédagogie et précision à TOUTES questions, y compris générales : techniques de vente, arguments commerciaux, objection prix, marketing digital (Facebook, TikTok, WhatsApp), informatique générale, dépannage (erreurs Windows/Office), différences entre versions logicielles et culture générale.\n"
+                "2. Fournir des informations précises sur le catalogue de licences réelles ci-dessous (tarifs en Ariary, fonctionnalités, guides d'installation et d'activation).\n"
+                "3. Renseigner sur les coordonnées et modalités de paiement acceptées (MVola, Orange Money, Espèces, etc.).\n"
+                "4. Si l'utilisateur colle un message de commande client ou demande de préparer une vente, formule une réponse claire et génère impérativement un objet 'order_intent' contenant les détails de la commande.\n\n"
+                f"CATALOGUE ACTUEL DES PRODUITS:\n{json.dumps(catalogue, ensure_ascii=False, indent=2)}\n\n"
+                f"MÉTHODES DE PAIEMENT ACCEPTEES:\n{json.dumps(methodes, ensure_ascii=False, indent=2)}\n\n"
+                "RÉPONSE ATTENDUE EN FORMAT JSON STRICT:\n"
+                "{\n"
+                "  \"reply\": \"Texte de ta réponse conversationnelle en Markdown (formaté avec puces, gras, etc.)\",\n"
+                "  \"order_intent\": null ou {\n"
+                "      \"client_nom\": string,\n"
+                "      \"client_numero\": string,\n"
+                "      \"methode_paiement_id\": number ou null,\n"
+                "      \"articles\": [\n"
+                "        {\n"
+                "          \"produit_id\": number,\n"
+                "          \"produit_nom\": string,\n"
+                "          \"quantite\": number,\n"
+                "          \"prix_unitaire\": number\n"
+                "        }\n"
+                "      ]\n"
+                "   }\n"
+                "}"
+            )
+
+            history_text = ""
+            for h in history[-6:]:
+                speaker = "Utilisateur" if h.get('role') == 'user' else "Assistant"
+                history_text += f"{speaker}: {h.get('text', '')}\n"
+
+            prompt = f"{system_instruction}\n\nHISTORIQUE RÉCENT:\n{history_text}\nNOUVEAU MESSAGE DE L'UTILISATEUR:\n{message}"
+
+            response = model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json", "temperature": 0.4}
+            )
+            data = json.loads(response.text)
+            if 'reply' in data:
+                return data
+        except Exception as e:
+            print(f"[Vertex AI Chat Info]: {e}")
+            return None
 
     def _call_gemini_chat(self, message, history, catalogue, methodes, user, role_label, point, api_key):
         system_instruction = (
