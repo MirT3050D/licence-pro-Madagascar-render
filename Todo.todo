@@ -1,0 +1,150 @@
+Stack: 
+    Base de donnée : Neon.tech
+    API : DRF
+    Frontend :
+        Desktop : Vue + Electron
+        Mobile : Vue + ionic
+
+CRUD Produit
+    Affichage
+        Interface pour créer un produit (avec prix initial et procédure d'activation)
+        Interface pour lister les produits avec des boutons modifier, supprimer et lien d'achat
+        Fiche détaillée produit (historique des prix et guide d'activation)
+    Métier
+        Classe
+            Produit
+                id
+                nom
+                description
+                image
+                lien_achat
+                prix_achat
+            Prix
+                id
+                prix
+                created_at
+                id_produit
+                is_active
+            Activation
+                id
+                id_produit
+                description_activation
+        Fonction
+            ORM
+            Changer prix actif
+    Base
+        Produit, Prix, Activation
+
+CRUD Client
+    Affichage
+        Interface pour créer un client (avec choix de provenance)
+        Interface pour lister les clients avec des boutons modifier, supprimer et historique
+    Métier
+        Classe
+            Client
+                id
+                nom
+                numero (Nullable)
+                id_provenance
+            Provenance
+                id
+                label
+        Fonction
+            ORM
+    Base
+        Client, Provenance
+
+CRUD Vente
+    Affichage
+        Interface pour créer une vente (sélection client, ajout multi-produits avec quantité et prix unitaire, choix méthode de paiement)
+        Interface pour lister les ventes avec filtres par date, vendeur et méthode de paiement
+        Fiche détail d'une vente avec bouton pour copier le guide d'activation
+    Métier
+        Classe
+            Vente
+                id
+                date
+                id_client
+                id_user_affilie
+                id_methode_paiement
+            Commande
+                id
+                id_vente
+                id_produit
+                quantite
+                prix_unitaire
+                date
+            Methode_Paiement
+                id
+                label
+                details
+                is_active
+        Fonction
+            ORM
+            Créer vente avec lignes de commande (transaction)
+            Calculer total vente
+    Base
+        Vente, Commande, Methode_Paiement
+
+Assistant IA
+    Affichage
+        Composant chatbox / drawer accessible sur toutes les pages
+        Zone de prompt pour coller un texte brut (ex: message client) et pré-remplir automatiquement une vente ou un client
+    Métier
+        Fonction
+            Appel API LLM
+            Extraction des données (client, produits, quantités, paiement)
+            Formatage JSON pour les formulaires
+    Base
+        Produit, Prix, Client, Methode_Paiement (Lecture)
+
+Tableau de bord
+    Affichage
+        Sidebar de navigation
+        Cartes KPI : Chiffre d'affaires, Marge nette, Nombre de ventes
+        Graphiques : Évolution des ventes, répartition par méthode de paiement, top produits
+        Classement des points par vendeur
+    Métier
+        Fonction
+            Calcul des statistiques et KPI
+            Agrégation des ventes par date et par méthode de paiement
+            Calcul des points par utilisateur
+    Base
+        Vente, Commande, Produit, Methode_Paiement, Utilisateur, Role
+
+Login
+    Affichage
+        Interface de login : email + mot de passe
+    Métier
+        Classe
+            Utilisateur
+                id
+                nom
+                prenom
+                numero
+                email
+                mot_de_passe
+                id_role
+            Role
+                id
+                nom
+                label
+                point
+        Fonction
+            ORM
+            Check Login (Génération Token JWT)
+            Refresh Token
+    Base
+        Utilisateur, Role
+
+A propos Utilisateur
+    Affichage
+        Interface profil : informations personnelles (nom, prénom, email, numéro)
+        Affichage du rôle et du solde de points / commissions cumulés
+        Historique des ventes réalisées par l'utilisateur connecté
+    Métier
+        Fonction
+            Récupérer profil connecté
+            Calculer total points et ventes personnelles
+    Base
+        Utilisateur, Role, Vente
