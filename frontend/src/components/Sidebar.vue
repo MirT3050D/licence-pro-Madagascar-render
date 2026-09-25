@@ -3,8 +3,8 @@
     <!-- Brand Header -->
     <div class="sidebar-header">
       <div class="brand-logo">
-        <div class="logo-icon">
-          <ShieldCheck :size="24" class="icon-brand" />
+        <div class="logo-img-box">
+          <img src="/logo.png" alt="Licence Pro Madagascar" class="sidebar-logo-img" />
         </div>
         <div class="logo-text">
           <span class="brand-title">Licence Pro</span>
@@ -74,7 +74,6 @@ import {
   Users,
   User,
   LogOut,
-  ShieldCheck,
 } from '@lucide/vue'
 import { useAuth } from '../composables/useAuth'
 
@@ -119,16 +118,30 @@ function handleLogout() {
   gap: 0.75rem;
 }
 
-.logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  background: var(--gradient-brand);
+.logo-img-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 210, 255, 0.2) 0%, rgba(6, 13, 25, 0.9) 100%);
+  border: 1.5px solid rgba(0, 210, 255, 0.45);
+  box-shadow: 0 0 16px rgba(0, 210, 255, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.brand-logo:hover .logo-img-box {
+  transform: scale(1.08) rotate(4deg);
+  box-shadow: 0 0 24px rgba(0, 210, 255, 0.6);
+}
+
+.sidebar-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand-title {
@@ -143,8 +156,8 @@ function handleLogout() {
 
 .brand-subtitle {
   font-size: 0.7rem;
-  font-weight: 600;
-  color: #818cf8;
+  font-weight: 700;
+  color: var(--primary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

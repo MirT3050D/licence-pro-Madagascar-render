@@ -2,33 +2,33 @@
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Colors */
-  --bg-app: #080c14;
-  --bg-sidebar: #0d131f;
-  --bg-card: rgba(17, 24, 39, 0.7);
-  --bg-card-hover: rgba(31, 41, 55, 0.85);
-  --bg-surface: #131c2e;
-  --bg-input: rgba(15, 23, 42, 0.6);
+  /* Colors - Matched to Licence Pro Madagascar Logo */
+  --bg-app: #060d19;
+  --bg-sidebar: #091322;
+  --bg-card: rgba(12, 24, 43, 0.75);
+  --bg-card-hover: rgba(18, 35, 62, 0.88);
+  --bg-surface: #0e1d33;
+  --bg-input: rgba(10, 20, 36, 0.7);
 
   --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-card: rgba(255, 255, 255, 0.1);
-  --border-active: rgba(99, 102, 241, 0.5);
+  --border-card: rgba(0, 210, 255, 0.12);
+  --border-active: rgba(0, 210, 255, 0.5);
 
-  --primary: #6366f1;
-  --primary-hover: #4f46e5;
-  --primary-light: rgba(99, 102, 241, 0.15);
-  --gradient-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+  --primary: #00d2ff;
+  --primary-hover: #00b4d8;
+  --primary-light: rgba(0, 210, 255, 0.15);
+  --gradient-brand: linear-gradient(135deg, #00d2ff 0%, #0066ff 60%, #10b981 100%);
   --gradient-emerald: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  --gradient-card: linear-gradient(145deg, rgba(26, 34, 52, 0.6) 0%, rgba(13, 19, 31, 0.8) 100%);
+  --gradient-card: linear-gradient(145deg, rgba(14, 27, 48, 0.75) 0%, rgba(8, 17, 31, 0.85) 100%);
 
   --emerald: #10b981;
-  --emerald-bg: rgba(16, 185, 129, 0.12);
+  --emerald-bg: rgba(16, 185, 129, 0.14);
   --amber: #f59e0b;
-  --amber-bg: rgba(245, 158, 11, 0.12);
+  --amber-bg: rgba(245, 158, 11, 0.14);
   --rose: #f43f5e;
-  --rose-bg: rgba(244, 63, 94, 0.12);
-  --cyan: #06b6d4;
-  --cyan-bg: rgba(6, 182, 212, 0.12);
+  --rose-bg: rgba(244, 63, 94, 0.14);
+  --cyan: #00d2ff;
+  --cyan-bg: rgba(0, 210, 255, 0.14);
 
   --text-main: #f8fafc;
   --text-secondary: #94a3b8;
@@ -39,9 +39,9 @@
   --radius-lg: 16px;
   --radius-xl: 22px;
 
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.45);
-  --shadow-glow: 0 0 25px rgba(99, 102, 241, 0.25);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 25px rgba(0, 210, 255, 0.3);
   --shadow-glow-emerald: 0 0 25px rgba(16, 185, 129, 0.25);
 
   --transition-fast: 0.15s ease;
@@ -195,8 +195,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .badge-primary {
   background: var(--primary-light);
-  color: #818cf8;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--primary);
+  border: 1px solid rgba(0, 210, 255, 0.35);
 }
 
 .badge-success {

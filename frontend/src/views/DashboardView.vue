@@ -216,11 +216,11 @@ const salesChartData = computed(() => {
       {
         label: 'Nombre de ventes',
         data: evols.map(e => e.nb_ventes),
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+        borderColor: '#00d2ff',
+        backgroundColor: 'rgba(0, 210, 255, 0.18)',
         tension: 0.35,
         fill: true,
-        pointBackgroundColor: '#818cf8',
+        pointBackgroundColor: '#00e5ff',
         pointRadius: 4,
       }
     ]
@@ -254,11 +254,11 @@ const paymentChartData = computed(() => {
       {
         data: payments.map(p => p.nb_ventes),
         backgroundColor: [
-          '#6366f1',
-          '#f59e0b',
+          '#00d2ff',
           '#10b981',
+          '#f59e0b',
+          '#0284c7',
           '#ec4899',
-          '#06b6d4',
         ],
         borderWidth: 0,
       }
@@ -347,7 +347,7 @@ onMounted(() => {
 
 .icon-primary {
   background: var(--primary-light);
-  color: #818cf8;
+  color: var(--primary);
 }
 
 .icon-emerald {

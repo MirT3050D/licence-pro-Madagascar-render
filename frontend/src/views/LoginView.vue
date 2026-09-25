@@ -8,10 +8,10 @@
         <!-- Logo & Header -->
         <div class="brand-header">
           <div class="logo-box">
-            <ShieldCheck :size="32" />
+            <img src="/logo.png" alt="Licence Pro Madagascar" class="login-logo-img" />
           </div>
           <h1>Licence Pro</h1>
-          <p class="brand-tag">Portail de gestion Madagascar</p>
+          <p class="brand-tag">Portail Officiel Madagascar</p>
         </div>
 
         <!-- Error banner -->
@@ -32,7 +32,7 @@
                 required
                 autocomplete="email"
                 class="form-input"
-                placeholder="admin@licencepro.mg"
+                placeholder="votre.email@licencepro.mg"
               />
             </div>
           </div>
@@ -68,28 +68,13 @@
           </button>
         </form>
 
-        <!-- Quick 1-Click Connect Demo Buttons -->
-        <div class="demo-helpers">
-          <div class="demo-divider">
-            <span>Connexion rapide en 1 clic</span>
+        <!-- Secure Connection Footer -->
+        <div class="login-footer-notice">
+          <div class="security-badge">
+            <ShieldCheck :size="14" class="text-primary" />
+            <span>Connexion chiffrée SSL / JWT</span>
           </div>
-          <div class="demo-buttons">
-            <button @click="quickLogin('admin')" type="button" class="btn-demo" :disabled="loading">
-              <div class="demo-header">
-                <strong>👑 Admin</strong>
-                <span class="badge-quick">1 clic</span>
-              </div>
-              <span class="demo-email">admin@licencepro.mg</span>
-            </button>
-
-            <button @click="quickLogin('vendeur')" type="button" class="btn-demo" :disabled="loading">
-              <div class="demo-header">
-                <strong>💼 Vendeur</strong>
-                <span class="badge-quick">1 clic</span>
-              </div>
-              <span class="demo-email">vendeur@licencepro.mg</span>
-            </button>
-          </div>
+          <p class="copyright">© Licence Pro Madagascar — Tous droits réservés</p>
         </div>
       </div>
     </div>
@@ -100,37 +85,31 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ShieldCheck,
   Mail,
   Lock,
   ArrowRight,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  ShieldCheck
 } from '@lucide/vue'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
 const { login } = useAuth()
 
-const email = ref('admin@licencepro.mg')
-const password = ref('adminpassword123')
+const email = ref('')
+const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 
-async function quickLogin(role) {
-  if (role === 'admin') {
-    email.value = 'admin@licencepro.mg'
-    password.value = 'adminpassword123'
-  } else {
-    email.value = 'vendeur@licencepro.mg'
-    password.value = 'vendeurpassword123'
-  }
-  await handleLogin()
-}
-
 async function handleLogin() {
+  if (!email.value || !password.value) {
+    errorMessage.value = 'Veuillez saisir votre email et votre mot de passe.'
+    return
+  }
+
   loading.value = true
   errorMessage.value = ''
   try {
@@ -166,24 +145,24 @@ async function handleLogin() {
 
 .glow-bg {
   position: absolute;
-  width: 500px;
-  height: 500px;
+  width: 520px;
+  height: 520px;
   border-radius: 50%;
-  filter: blur(120px);
-  opacity: 0.25;
+  filter: blur(140px);
+  opacity: 0.22;
   pointer-events: none;
 }
 
 .glow-1 {
-  background: #6366f1;
-  top: -100px;
-  left: -100px;
+  background: var(--primary);
+  top: -120px;
+  left: -120px;
 }
 
 .glow-2 {
-  background: #d946ef;
-  bottom: -100px;
-  right: -100px;
+  background: var(--emerald);
+  bottom: -120px;
+  right: -120px;
 }
 
 .login-container {
@@ -193,8 +172,10 @@ async function handleLogin() {
 }
 
 .login-card {
-  padding: 2.5rem;
+  padding: 2.75rem 2.25rem;
   border-radius: var(--radius-xl);
+  border: 1px solid var(--border-card);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 210, 255, 0.12);
 }
 
 .brand-header {
@@ -203,28 +184,46 @@ async function handleLogin() {
 }
 
 .logo-box {
-  width: 60px;
-  height: 60px;
-  border-radius: var(--radius-lg);
-  background: var(--gradient-brand);
-  color: white;
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 210, 255, 0.18) 0%, rgba(6, 13, 25, 0.85) 100%);
+  border: 2px solid rgba(0, 210, 255, 0.45);
+  box-shadow: 0 0 25px rgba(0, 210, 255, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 1rem;
-  box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+  margin: 0 auto 1.25rem;
+  overflow: hidden;
+  transition: transform var(--transition-normal);
+}
+
+.logo-box:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 35px rgba(0, 210, 255, 0.55);
+}
+
+.login-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand-header h1 {
-  font-size: 1.75rem;
+  font-size: 1.85rem;
   font-weight: 800;
   letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #ffffff 30%, var(--primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .brand-tag {
   color: var(--text-secondary);
-  font-size: 0.875rem;
-  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 0.3rem;
+  letter-spacing: 0.02em;
 }
 
 .error-banner {
@@ -282,83 +281,40 @@ async function handleLogin() {
 
 .btn-submit {
   width: 100%;
-  padding: 0.85rem;
+  padding: 0.9rem;
   font-size: 0.95rem;
-  margin-top: 0.5rem;
-}
-
-.demo-helpers {
-  margin-top: 2rem;
-}
-
-.demo-divider {
+  margin-top: 0.75rem;
   display: flex;
   align-items: center;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  margin-bottom: 1rem;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-.demo-divider::before,
-.demo-divider::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.demo-divider span {
-  padding: 0 0.75rem;
-}
-
-.demo-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.btn-demo {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 0.75rem 0.65rem;
-  text-align: left;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
+.login-footer-notice {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-}
-
-.demo-header {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.6rem;
 }
 
-.btn-demo strong {
-  font-size: 0.825rem;
-  color: var(--text-main);
-}
-
-.badge-quick {
-  background: var(--primary-light);
-  color: #a5b4fc;
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  font-weight: 700;
-}
-
-.demo-email {
-  font-size: 0.7rem;
+.security-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.btn-demo:hover {
-  background: rgba(99, 102, 241, 0.12);
-  border-color: rgba(99, 102, 241, 0.4);
-  transform: translateY(-1px);
+.text-primary {
+  color: var(--primary);
+}
+
+.copyright {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 </style>

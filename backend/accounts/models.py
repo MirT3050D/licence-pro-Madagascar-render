@@ -44,6 +44,14 @@ class UtilisateurManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Le superutilisateur doit avoir is_superuser=True.')
 
+        if 'role' not in extra_fields or extra_fields['role'] is None:
+            Role = self.model._meta.get_field('role').remote_field.model
+            role_admin, _ = Role.objects.get_or_create(
+                nom='admin',
+                defaults={'label': 'Administrateur', 'point': 100}
+            )
+            extra_fields['role'] = role_admin
+
         return self.create_user(email, password, **extra_fields)
 
 

@@ -204,8 +204,8 @@ onMounted(() => {
   align-items: center;
   gap: 0.4rem;
   background: var(--primary-light);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #818cf8;
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  color: var(--primary);
   padding: 0.25rem 0.75rem;
   border-radius: 9999px;
   font-size: 0.75rem;

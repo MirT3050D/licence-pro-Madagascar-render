@@ -52,7 +52,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         user_exists = Utilisateur.objects.filter(email__iexact=email).exists()
         if not user_exists:
             raise serializers.ValidationError({
-                'detail': f"Aucun compte associé à l'adresse '{email}'. Les comptes existants sont admin@licencepro.mg ou vendeur@licencepro.mg."
+                'detail': f"Aucun compte associé à l'adresse '{email}'. Veuillez vérifier votre saisie."
             })
 
         try:

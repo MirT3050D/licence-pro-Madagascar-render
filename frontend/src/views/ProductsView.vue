@@ -445,7 +445,7 @@ onMounted(() => {
   height: 44px;
   border-radius: var(--radius-md);
   background: var(--primary-light);
-  color: #818cf8;
+  color: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -494,7 +494,7 @@ onMounted(() => {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: #818cf8;
+  color: var(--primary);
   text-decoration: none;
 }
 
