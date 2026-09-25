@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Sum, Count, F, DecimalField, ExpressionWrapper, Q
@@ -9,9 +10,44 @@ from accounts.models import Utilisateur
 
 
 class MethodePaiementViewSet(viewsets.ModelViewSet):
-    queryset = MethodePaiement.objects.all()
+    queryset = MethodePaiement.objects.all().prefetch_related('ventes')
     serializer_class = MethodePaiementSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        search = self.request.query_params.get('search') or self.request.query_params.get('q')
+        status_param = self.request.query_params.get('status')
+
+        if search:
+            search = search.strip()
+            qs = qs.filter(Q(label__icontains=search) | Q(details__icontains=search))
+
+        if status_param == 'active':
+            qs = qs.filter(is_active=True)
+        elif status_param == 'inactive':
+            qs = qs.filter(is_active=False)
+
+        return qs.order_by('-is_active', 'label')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        ventes_count = instance.ventes.count()
+        if ventes_count > 0:
+            return Response(
+                {
+                    'error': f"Impossible de supprimer « {instance.label} » car elle est rattachée à {ventes_count} vente(s). Vous pouvez la désactiver à la place."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='toggle-active')
+    def toggle_active(self, request, pk=None):
+        instance = self.get_object()
+        instance.is_active = not instance.is_active
+        instance.save(update_fields=['is_active'])
+        return Response(self.get_serializer(instance).data)
 
 
 class VenteViewSet(viewsets.ModelViewSet):

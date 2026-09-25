@@ -6,6 +6,7 @@ import DashboardView from '../views/DashboardView.vue'
 import ProductsView from '../views/ProductsView.vue'
 import ClientsView from '../views/ClientsView.vue'
 import SalesView from '../views/SalesView.vue'
+import PaymentMethodsView from '../views/PaymentMethodsView.vue'
 import ProfileView from '../views/ProfileView.vue'
 
 const routes = [
@@ -34,6 +35,11 @@ const routes = [
     path: '/ventes',
     name: 'ventes',
     component: SalesView,
+  },
+  {
+    path: '/paiements',
+    name: 'paiements',
+    component: PaymentMethodsView,
   },
   {
     path: '/profil',

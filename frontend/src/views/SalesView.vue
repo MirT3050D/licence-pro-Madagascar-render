@@ -262,7 +262,13 @@
 
             <!-- Payment method -->
             <div class="form-group flex-1">
-              <label class="form-label">Méthode de Paiement *</label>
+              <div class="flex items-center justify-between mb-1">
+                <label class="form-label" style="margin-bottom: 0;">Méthode de Paiement *</label>
+                <router-link to="/paiements" target="_blank" class="text-xs text-primary flex items-center gap-1" title="Gérer ou ajouter des méthodes de paiement">
+                  <ExternalLink :size="12" />
+                  <span>Gérer</span>
+                </router-link>
+              </div>
               <select v-model="form.methode_paiement_id" required class="form-select">
                 <option value="" disabled>-- Choisir le mode de paiement --</option>
                 <option v-for="m in paymentMethods" :key="m.id" :value="m.id">
@@ -457,7 +463,8 @@ import {
   Zap,
   RotateCcw,
   Lock,
-  Package
+  Package,
+  ExternalLink
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'

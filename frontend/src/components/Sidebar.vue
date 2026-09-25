@@ -37,6 +37,11 @@
         <span>Clients</span>
       </router-link>
 
+      <router-link to="/paiements" class="nav-item" :class="{ active: $route.path.startsWith('/paiements') }">
+        <CreditCard :size="20" />
+        <span>Modes de règlement</span>
+      </router-link>
+
       <div class="nav-section-title">COMPTE & PERFORMANCE</div>
 
       <router-link to="/profil" class="nav-item" :class="{ active: $route.path.startsWith('/profil') }">
@@ -72,6 +77,7 @@ import {
   ShoppingCart,
   Package,
   Users,
+  CreditCard,
   User,
   LogOut,
 } from '@lucide/vue'

@@ -23,6 +23,12 @@ def home_view(request):
         }
     })
 
+from rest_framework.routers import DefaultRouter
+from sales.views import MethodePaiementViewSet
+
+payment_router = DefaultRouter()
+payment_router.register(r'', MethodePaiementViewSet, basename='methode-paiement-direct')
+
 urlpatterns = [
     path('', home_view, name='home'),
     path('admin/', admin.site.urls),
@@ -32,6 +38,7 @@ urlpatterns = [
     path('api/clients/', include('clients.urls')),
     path('api/produits/', include('catalog.urls')),
     path('api/ventes/', include('sales.urls')),
+    path('api/methodes-paiement/', include(payment_router.urls)),
     path('api/ai/', include('ai_assistant.urls')),
 ]
 

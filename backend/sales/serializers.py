@@ -8,9 +8,11 @@ from accounts.serializers import UtilisateurSerializer
 
 
 class MethodePaiementSerializer(serializers.ModelSerializer):
+    ventes_count = serializers.IntegerField(source='ventes.count', read_only=True)
+
     class Meta:
         model = MethodePaiement
-        fields = ['id', 'label', 'details', 'is_active']
+        fields = ['id', 'label', 'details', 'is_active', 'ventes_count']
 
 
 class CommandeSerializer(serializers.ModelSerializer):
