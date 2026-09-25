@@ -4,6 +4,7 @@ from .models import MethodePaiement, Vente, Commande
 from clients.models import Client
 from catalog.models import Produit
 from clients.serializers import ClientSerializer
+from accounts.models import Utilisateur
 from accounts.serializers import UtilisateurSerializer
 
 
@@ -64,6 +65,7 @@ class VenteCreateSerializer(serializers.Serializer):
     client_id = serializers.IntegerField()
     user_affilie_id = serializers.IntegerField(required=False, allow_null=True)
     methode_paiement_id = serializers.IntegerField()
+    date = serializers.DateTimeField(required=False, allow_null=True)
     articles = CommandeItemInputSerializer(many=True)
 
     def validate_client_id(self, value):
@@ -92,13 +94,18 @@ class VenteCreateSerializer(serializers.Serializer):
         client = Client.objects.get(id=validated_data['client_id'])
         methode = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
         articles_data = validated_data['articles']
+        sale_date = validated_data.get('date')
 
         with transaction.atomic():
-            vente = Vente.objects.create(
-                client=client,
-                user_affilie=user_affilie,
-                methode_paiement=methode
-            )
+            vente_kwargs = {
+                'client': client,
+                'user_affilie': user_affilie,
+                'methode_paiement': methode,
+            }
+            if sale_date:
+                vente_kwargs['date'] = sale_date
+
+            vente = Vente.objects.create(**vente_kwargs)
 
             for item in articles_data:
                 produit = Produit.objects.get(id=item['produit_id'])
@@ -113,7 +120,8 @@ class VenteCreateSerializer(serializers.Serializer):
                     vente=vente,
                     produit=produit,
                     quantite=item['quantite'],
-                    prix_unitaire=prix
+                    prix_unitaire=prix,
+                    date=vente.date
                 )
 
         return vente

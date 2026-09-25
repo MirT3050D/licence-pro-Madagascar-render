@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from clients.models import Client
 from catalog.models import Produit
 
@@ -19,7 +20,7 @@ class MethodePaiement(models.Model):
 
 
 class Vente(models.Model):
-    date = models.DateTimeField(auto_now_add=True)
+    date = models.DateTimeField(default=timezone.now)
     client = models.ForeignKey(
         Client,
         on_delete=models.RESTRICT,
@@ -73,7 +74,7 @@ class Commande(models.Model):
     )
     quantite = models.PositiveIntegerField(default=1)
     prix_unitaire = models.DecimalField(max_digits=12, decimal_places=2)
-    date = models.DateTimeField(auto_now_add=True)
+    date = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = 'commande'

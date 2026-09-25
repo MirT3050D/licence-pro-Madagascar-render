@@ -487,6 +487,40 @@ class AIChatView(APIView):
     def _fallback_chat(self, message, catalogue, methodes):
         lower = message.lower()
 
+        # 0. Détection d'un catalogue brut à importer (ex: "• Windows 11 : 49 000 Ar")
+        catalog_lines = re.findall(r'[•\-*]?\s*([A-Za-z0-9\s\(\)\.\+\-\'\"]+?)\s*:\s*([0-9\s]+)\s*Ar', message, re.IGNORECASE)
+        if len(catalog_lines) >= 2:
+            extracted_products = []
+            for p_nom, p_prix in catalog_lines:
+                clean_nom = p_nom.strip()
+                try:
+                    clean_prix = float(p_prix.replace(' ', '').replace('\xa0', '').strip())
+                except ValueError:
+                    continue
+                if clean_nom and clean_prix > 0 and not clean_nom.lower().startswith('total'):
+                    extracted_products.append({
+                        "nom": clean_nom,
+                        "prix": clean_prix,
+                        "description": f"Licence logicielle officielle {clean_nom}",
+                    })
+
+            if extracted_products:
+                lines = [f"• **{p['nom']}** : **{p['prix']:,.0f} Ar**".replace(',', ' ') for p in extracted_products[:8]]
+                more = f"\n• *... et {len(extracted_products) - 8} autre(s)*" if len(extracted_products) > 8 else ""
+                reply = (
+                    f"📦 **Catalogue détecté avec succès !**\n\nJ'ai extrait **{len(extracted_products)} logiciel(s)** :\n\n"
+                    + "\n".join(lines) + more + "\n\n"
+                    "👉 Cliquez sur le bouton ci-dessous pour les enregistrer ou mettre à jour directement dans la base de données :"
+                )
+                return {
+                    "reply": reply,
+                    "order_intent": None,
+                    "catalog_intent": {
+                        "action": "bulk_create",
+                        "items": extracted_products
+                    }
+                }
+
         # 1. Détection de commande en priorité si des articles sont identifiés
         parser = AIParsingView()
         parsed = parser._fallback_rule_based_parser(message, catalogue, methodes)

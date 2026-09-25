@@ -237,9 +237,10 @@
         </div>
 
         <form @submit.prevent="submitCreateSale" class="modal-body">
-          <div class="sale-top-fields">
-            <!-- Client selection -->
-            <div class="form-group flex-1">
+          <!-- Grille 2x2 : Client, Date, Paiement, Vendeur -->
+          <div class="sale-top-grid">
+            <!-- Client selection (Haut Gauche) -->
+            <div class="form-group">
               <label class="form-label">Client *</label>
               <select v-model="form.client_id" required class="form-select">
                 <option value="" disabled>-- Choisir le client --</option>
@@ -249,22 +250,37 @@
               </select>
             </div>
 
-            <!-- Media Buyer attribution -->
-            <div class="form-group flex-1">
-              <label class="form-label">Media Buyer / Vendeur crédité *</label>
-              <select v-model="form.user_affilie_id" class="form-select">
-                <option :value="user?.id">👑 Moi-même ({{ user?.prenom }} {{ user?.nom }})</option>
-                <option v-for="u in vendorsList" :key="u.id" :value="u.id">
-                  👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Media Buyer' }})
-                </option>
-              </select>
+            <!-- Date de la vente (Haut Droite) -->
+            <div class="form-group">
+              <div class="flex items-center justify-between mb-1">
+                <label class="form-label" style="margin-bottom: 0;">Date de la vente *</label>
+                <button
+                  type="button"
+                  @click="form.date = getLocalDateTimeString()"
+                  class="text-xs text-primary btn-link-action"
+                  title="Rétablir à la date et heure actuelles"
+                >
+                  Maintenant
+                </button>
+              </div>
+              <input
+                v-model="form.date"
+                type="datetime-local"
+                required
+                class="form-input"
+              />
             </div>
 
-            <!-- Payment method -->
-            <div class="form-group flex-1">
+            <!-- Mode de paiement (Bas Gauche - Juste sous le client, facile d'accès) -->
+            <div class="form-group">
               <div class="flex items-center justify-between mb-1">
                 <label class="form-label" style="margin-bottom: 0;">Méthode de Paiement *</label>
-                <router-link to="/paiements" target="_blank" class="text-xs text-primary flex items-center gap-1" title="Gérer ou ajouter des méthodes de paiement">
+                <router-link
+                  to="/paiements"
+                  target="_blank"
+                  class="text-xs text-primary flex items-center gap-1"
+                  title="Gérer ou ajouter des méthodes de paiement"
+                >
                   <ExternalLink :size="12" />
                   <span>Gérer</span>
                 </router-link>
@@ -276,12 +292,26 @@
                 </option>
               </select>
             </div>
+
+            <!-- Vendeur / Affilié (Bas Droite - Libellé concis) -->
+            <div class="form-group">
+              <label class="form-label">Vendeur / Affilié *</label>
+              <select v-model="form.user_affilie_id" class="form-select">
+                <option :value="user?.id">👑 Moi-même ({{ user?.prenom }} {{ user?.nom }})</option>
+                <option v-for="u in vendorsList" :key="u.id" :value="u.id">
+                  👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Vendeur' }})
+                </option>
+              </select>
+            </div>
           </div>
 
           <!-- Product Lines Section -->
           <div class="order-items-box">
             <div class="order-items-header">
-              <span class="text-sm font-bold">Produits & Licences inclus dans la vente</span>
+              <div class="items-header-title">
+                <span class="text-sm font-bold">Produits & Licences inclus dans la vente</span>
+                <span class="badge badge-secondary">{{ form.articles.length }} article(s)</span>
+              </div>
               <button @click="addArticleLine" type="button" class="btn btn-secondary btn-xs">
                 <Plus :size="14" />
                 <span>Ajouter un produit</span>
@@ -291,7 +321,7 @@
             <div class="articles-lines-list">
               <div v-for="(line, idx) in form.articles" :key="idx" class="article-line-row">
                 <!-- Product selector -->
-                <div class="flex-2">
+                <div class="line-col-product">
                   <label class="form-label text-xs">Produit *</label>
                   <select
                     v-model="line.produit_id"
@@ -301,13 +331,13 @@
                   >
                     <option value="" disabled>-- Sélectionner le produit --</option>
                     <option v-for="p in productsList" :key="p.id" :value="p.id">
-                      {{ p.nom }} (Prix: {{ formatPrice(p.prix_vente) }})
+                      {{ p.nom }} (Prix actif: {{ formatPrice(p.prix_actif) }})
                     </option>
                   </select>
                 </div>
 
                 <!-- Quantity -->
-                <div class="flex-1">
+                <div class="line-col-qty">
                   <label class="form-label text-xs">Quantité</label>
                   <input
                     v-model.number="line.quantite"
@@ -318,15 +348,28 @@
                   />
                 </div>
 
-                <!-- Unit price -->
-                <div class="flex-1">
-                  <label class="form-label text-xs">Prix Unitaire (Ar)</label>
+                <!-- Unit price (prefilled with active price, editable) -->
+                <div class="line-col-price">
+                  <div class="flex items-center justify-between">
+                    <label class="form-label text-xs">Prix Unitaire (Ar) *</label>
+                    <button
+                      v-if="getActivePrice(line.produit_id) !== null && line.prix_unitaire !== Number(getActivePrice(line.produit_id))"
+                      type="button"
+                      @click="resetToActivePrice(line)"
+                      class="text-xs text-primary btn-link-action"
+                      title="Rétablir au prix actif du catalogue"
+                    >
+                      Prix actif
+                    </button>
+                  </div>
                   <input
                     v-model.number="line.prix_unitaire"
                     type="number"
+                    min="0"
                     step="100"
                     required
                     class="form-input"
+                    placeholder="Prix unitaire"
                   />
                 </div>
 
@@ -346,7 +389,7 @@
                   class="btn-icon btn-danger-icon"
                   title="Supprimer la ligne"
                 >
-                  <Trash2 :size="14" />
+                  <Trash2 :size="15" />
                 </button>
               </div>
             </div>
@@ -493,6 +536,16 @@ const filters = ref({
 const activePeriodPreset = ref('all')
 let searchTimeout = null
 
+function getLocalDateTimeString(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const year = date.getFullYear()
+  const month = pad(date.getMonth() + 1)
+  const day = pad(date.getDate())
+  const hours = pad(date.getHours())
+  const minutes = pad(date.getMinutes())
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 // Modals
 const showCreateModal = ref(false)
 const showDetailModal = ref(false)
@@ -500,6 +553,7 @@ const selectedSale = ref(null)
 
 const form = ref({
   client_id: '',
+  date: getLocalDateTimeString(),
   user_affilie_id: '',
   methode_paiement_id: '',
   articles: [
@@ -642,6 +696,19 @@ function resetFilters() {
   fetchSales()
 }
 
+function getActivePrice(productId) {
+  if (!productId) return null
+  const p = productsList.value.find(item => item.id === productId)
+  return p?.prix_actif ?? null
+}
+
+function resetToActivePrice(line) {
+  const price = getActivePrice(line.produit_id)
+  if (price !== null && price !== undefined) {
+    line.prix_unitaire = Number(price)
+  }
+}
+
 function openCreateSaleModal() {
   if (!isSuperAdmin.value) {
     alert("Permission refusée. Seul un administrateur (niveau 50) peut enregistrer de nouvelles ventes.")
@@ -652,17 +719,28 @@ function openCreateSaleModal() {
     try {
       const data = JSON.parse(prefill)
       sessionStorage.removeItem('prefill_sale')
-      form.value.client_id = data.client_id || ''
+      form.value.client_id = data.client_id || (clientsList.value[0]?.id || '')
+      form.value.date = data.date || getLocalDateTimeString()
+      form.value.user_affilie_id = data.user_affilie_id || (user.value?.id || '')
       form.value.methode_paiement_id = data.methode_paiement_id || (paymentMethods.value[0]?.id || '')
 
       if (data.articles?.length) {
-        form.value.articles = data.articles.map(a => ({
-          produit_id: a.produit_id,
-          quantite: a.quantite || 1,
-          prix_unitaire: a.prix_unitaire || 0
-        }))
+        form.value.articles = data.articles.map(a => {
+          const prod = productsList.value.find(p => p.id === a.produit_id)
+          const activePrice = prod?.prix_actif ? Number(prod.prix_actif) : 0
+          return {
+            produit_id: a.produit_id,
+            quantite: a.quantite || 1,
+            prix_unitaire: a.prix_unitaire !== undefined ? Number(a.prix_unitaire) : activePrice
+          }
+        })
       } else {
-        form.value.articles = [{ produit_id: '', quantite: 1, prix_unitaire: 0 }]
+        const defaultProd = productsList.value[0]
+        form.value.articles = [{
+          produit_id: defaultProd?.id || '',
+          quantite: 1,
+          prix_unitaire: defaultProd?.prix_actif ? Number(defaultProd.prix_actif) : 0
+        }]
       }
     } catch (e) {
       resetForm()
@@ -674,18 +752,29 @@ function openCreateSaleModal() {
 }
 
 function resetForm() {
+  const defaultProduct = productsList.value[0]
   form.value = {
     client_id: clientsList.value[0]?.id || '',
+    date: getLocalDateTimeString(),
     user_affilie_id: user.value?.id || '',
     methode_paiement_id: paymentMethods.value[0]?.id || '',
     articles: [
-      { produit_id: '', quantite: 1, prix_unitaire: 0 }
+      {
+        produit_id: defaultProduct?.id || '',
+        quantite: 1,
+        prix_unitaire: defaultProduct?.prix_actif ? Number(defaultProduct.prix_actif) : 0
+      }
     ]
   }
 }
 
 function addArticleLine() {
-  form.value.articles.push({ produit_id: '', quantite: 1, prix_unitaire: 0 })
+  const defaultProduct = productsList.value[0]
+  form.value.articles.push({
+    produit_id: defaultProduct?.id || '',
+    quantite: 1,
+    prix_unitaire: defaultProduct?.prix_actif ? Number(defaultProduct.prix_actif) : 0
+  })
 }
 
 function removeArticleLine(idx) {
@@ -695,14 +784,50 @@ function removeArticleLine(idx) {
 function onProductSelect(line) {
   const p = productsList.value.find(item => item.id === line.produit_id)
   if (p) {
-    line.prix_unitaire = Number(p.prix_vente)
+    line.prix_unitaire = Number(p.prix_actif ?? 0)
   }
+}
+
+function extractErrorMessage(err) {
+  if (!err) return "Une erreur est survenue lors de l'enregistrement de la vente."
+  if (err.response?.data) {
+    const data = err.response.data
+    if (typeof data === 'string') return data
+    if (data.error) return data.error
+    if (data.detail) return data.detail
+    if (Array.isArray(data.non_field_errors) && data.non_field_errors.length) {
+      return data.non_field_errors.join(' ')
+    }
+    const errors = []
+    for (const [key, value] of Object.entries(data)) {
+      if (Array.isArray(value)) {
+        errors.push(`${key}: ${value.join(', ')}`)
+      } else if (typeof value === 'object' && value !== null) {
+        errors.push(`${key}: ${JSON.stringify(value)}`)
+      } else {
+        errors.push(`${key}: ${value}`)
+      }
+    }
+    if (errors.length) return errors.join('\n')
+  }
+  return err.message || "Erreur lors de la validation de la vente"
 }
 
 async function submitCreateSale() {
   submitting.value = true
   try {
-    await apiClient.post('/ventes/', form.value)
+    const payload = {
+      client_id: form.value.client_id,
+      user_affilie_id: form.value.user_affilie_id || undefined,
+      methode_paiement_id: form.value.methode_paiement_id,
+      date: form.value.date ? new Date(form.value.date).toISOString() : undefined,
+      articles: form.value.articles.map(a => ({
+        produit_id: a.produit_id,
+        quantite: a.quantite,
+        prix_unitaire: a.prix_unitaire
+      }))
+    }
+    await apiClient.post('/ventes/', payload)
     showCreateModal.value = false
     await fetchSales()
 
@@ -712,7 +837,8 @@ async function submitCreateSale() {
       origin: { y: 0.6 }
     })
   } catch (err) {
-    alert(err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || "Erreur lors de la validation de la vente")
+    console.error('Erreur validation vente:', err)
+    alert(extractErrorMessage(err))
   } finally {
     submitting.value = false
   }
@@ -1067,10 +1193,57 @@ onMounted(async () => {
 
 .btn-close:hover { color: var(--text-main); }
 
-.sale-top-fields {
-  display: flex;
-  gap: 1.25rem;
+.sale-top-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem 1.5rem;
   margin-bottom: 1.5rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+}
+
+@media (max-width: 680px) {
+  .sale-top-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.btn-link-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  font-weight: 600;
+  transition: opacity var(--transition-fast);
+}
+
+.btn-link-action:hover {
+  opacity: 0.8;
+}
+
+.items-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.line-col-product {
+  flex: 2.5;
+  min-width: 190px;
+}
+
+.line-col-qty {
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.line-col-price {
+  flex: 1.6;
+  min-width: 150px;
 }
 
 .flex-1 { flex: 1; }
