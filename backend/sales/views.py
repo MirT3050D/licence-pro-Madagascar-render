@@ -443,3 +443,6 @@ class MediaBuyerCommissionConfigView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    def patch(self, request):
+        return self.put(request)

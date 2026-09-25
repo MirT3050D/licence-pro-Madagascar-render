@@ -303,8 +303,8 @@
     <SaleModal :is-open="isSaleModalOpen" @close="isSaleModalOpen = false" @sale-created="onSaleCreated" />
     <ClientModal :is-open="isClientModalOpen" @close="isClientModalOpen = false" @saved="loadDashboardData" />
 
-    <!-- Modal Paramètres Commission Media Buyer -->
-    <ion-modal :is-open="isConfigModalOpen" @didDismiss="isConfigModalOpen = false" :initial-breakpoint="0.9" :breakpoints="[0, 0.9, 1]">
+    <!-- Modal Paramètres Commission Media Buyer (Admin uniquement) -->
+    <ion-modal :is-open="isConfigModalOpen && isSuperAdmin" @didDismiss="isConfigModalOpen = false" :initial-breakpoint="0.9" :breakpoints="[0, 0.9, 1]">
       <ion-header>
         <ion-toolbar class="modal-toolbar">
           <ion-title>Règles Commission MB</ion-title>
@@ -612,6 +612,7 @@ const configForm = ref({
 })
 
 function openConfigModal() {
+  if (!isSuperAdmin.value) return
   const current = kpiData.value?.commission_media_buyer?.config
   if (current) {
     configForm.value = {
@@ -639,6 +640,7 @@ function openConfigModal() {
 }
 
 async function saveCommissionConfig() {
+  if (!isSuperAdmin.value) return
   savingConfig.value = true
   configError.value = ''
   try {

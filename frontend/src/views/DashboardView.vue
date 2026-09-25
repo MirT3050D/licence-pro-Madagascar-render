@@ -521,8 +521,8 @@
       </div>
     </div>
 
-    <!-- MODAL DE CONFIGURATION COMMISSION MEDIA BUYER -->
-    <div v-if="showConfigModal" class="modal-backdrop" @click.self="showConfigModal = false">
+    <!-- MODAL DE CONFIGURATION COMMISSION MEDIA BUYER (ADMIN UNIQUEMENT) -->
+    <div v-if="showConfigModal && isSuperAdmin" class="modal-backdrop" @click.self="showConfigModal = false">
       <div class="modal-card">
         <div class="modal-header">
           <div class="flex items-center gap-2">
@@ -940,6 +940,7 @@ const configForm = ref({
 })
 
 function openCommissionConfigModal() {
+  if (!isSuperAdmin.value) return
   const current = data.value?.commission_media_buyer?.config
   if (current) {
     configForm.value = {
@@ -967,6 +968,7 @@ function openCommissionConfigModal() {
 }
 
 async function saveCommissionConfig() {
+  if (!isSuperAdmin.value) return
   savingConfig.value = true
   configError.value = ''
   try {
