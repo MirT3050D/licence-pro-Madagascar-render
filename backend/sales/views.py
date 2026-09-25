@@ -292,19 +292,28 @@ class DashboardView(APIView):
                 mb_commandes = Commande.objects.none()
         else:
             mb_commandes = commandes_qs.filter(vente__client__provenance_id__in=eligible_prov_ids)
+        mb_commandes = mb_commandes.order_by('date', 'id')
 
         ca_eligible = 0.0
         benefice_eligible = 0.0
+        nb_articles_eligible = 0
+
+        # Commissions effectives (uniquement sur ce qui dépasse le coût pub)
         comm_regle_ca = 0.0
         comm_regle_benefice = 0.0
-        ca_marge_haute = 0.0
-        benefice_marge_basse = 0.0
-        nb_articles_eligible = 0
+        ca_marge_haute_commissionnee = 0.0
+        benefice_marge_basse_commissionnee = 0.0
+
+        # Commission brute théorique (ce qui aurait été généré sans déduction de pub)
+        commission_brute_totale = 0.0
 
         seuil_marge_val = float(mb_config.seuil_marge)
         pct_ca = float(mb_config.regle_ca) / 100.0
         pct_benefice = float(mb_config.regle_benefice) / 100.0
         cout_pub_val = float(mb_config.cout_pub)
+
+        # Suivi de l'amortissement chronologique du coût publicitaire
+        cumul_recouvrement = 0.0
 
         for cmd in mb_commandes:
             ca_l = float(cmd.quantite * cmd.prix_unitaire)
@@ -316,31 +325,62 @@ class DashboardView(APIView):
             nb_articles_eligible += cmd.quantite
 
             taux_marge = (benef_l / ca_l * 100.0) if ca_l > 0 else 0.0
+            is_haute_marge = (taux_marge > seuil_marge_val)
 
-            if taux_marge > seuil_marge_val:
-                # 10% sur le CA (strict sup)
-                c = ca_l * pct_ca
-                comm_regle_ca += c
-                ca_marge_haute += ca_l
+            # Calcul brut théorique
+            if is_haute_marge:
+                c_brut = ca_l * pct_ca
             else:
-                # 30% sur le bénéfice (40% et moins)
-                c = max(0.0, benef_l) * pct_benefice
-                comm_regle_benefice += c
-                benefice_marge_basse += max(0.0, benef_l)
+                c_brut = max(0.0, benef_l) * pct_benefice
+            commission_brute_totale += c_brut
 
-        commission_potentielle = comm_regle_ca + comm_regle_benefice
+            # Montant de cette ligne servant à amortir le coût pub
+            val_recouvrement = benef_l if mb_config.base_recouvrement == 'benefice' else ca_l
+
+            if cout_pub_val <= 0:
+                # Pas de coût pub -> 100% de la ligne est commissionnable
+                ratio_surplus = 1.0
+            else:
+                cumul_avant = cumul_recouvrement
+                cumul_apres = cumul_avant + max(0.0, val_recouvrement)
+                cumul_recouvrement = cumul_apres
+
+                if cumul_apres <= cout_pub_val:
+                    # Intégralement dans la tranche d'amortissement de la pub
+                    ratio_surplus = 0.0
+                elif cumul_avant >= cout_pub_val:
+                    # Entièrement au-delà du seuil de pub
+                    ratio_surplus = 1.0
+                else:
+                    # Ligne charnière qui franchit le seuil
+                    surplus = cumul_apres - cout_pub_val
+                    ratio_surplus = (surplus / val_recouvrement) if val_recouvrement > 0 else 0.0
+                    ratio_surplus = max(0.0, min(1.0, ratio_surplus))
+
+            # Application de la commission sur la portion excédentaire (surplus)
+            if ratio_surplus > 0:
+                if is_haute_marge:
+                    base_ca_part = ca_l * ratio_surplus
+                    c = base_ca_part * pct_ca
+                    comm_regle_ca += c
+                    ca_marge_haute_commissionnee += base_ca_part
+                else:
+                    base_benef_part = max(0.0, benef_l) * ratio_surplus
+                    c = base_benef_part * pct_benefice
+                    comm_regle_benefice += c
+                    benefice_marge_basse_commissionnee += base_benef_part
+
+        commission_due = comm_regle_ca + comm_regle_benefice
         recouvrement_actuel = benefice_eligible if mb_config.base_recouvrement == 'benefice' else ca_eligible
 
         if cout_pub_val <= 0:
             seuil_atteint = True
             progression_recouvrement = 100.0
-            commission_due = commission_potentielle
             reste_a_recouvrir = 0.0
         else:
             seuil_atteint = recouvrement_actuel >= cout_pub_val
             progression_recouvrement = min(100.0, round((recouvrement_actuel / cout_pub_val) * 100.0, 1))
             reste_a_recouvrir = max(0.0, cout_pub_val - recouvrement_actuel)
-            commission_due = commission_potentielle if seuil_atteint else 0.0
 
         commission_media_buyer = {
             'config': {
@@ -361,20 +401,20 @@ class DashboardView(APIView):
                 'base_recouvrement_label': "Bénéfice brut" if mb_config.base_recouvrement == 'benefice' else "Chiffre d'affaires",
             },
             'commission_due': round(commission_due, 2),
-            'commission_potentielle': round(commission_potentielle, 2),
+            'commission_brute_theorique': round(commission_brute_totale, 2),
             'ca_eligible': round(ca_eligible, 2),
             'benefice_eligible': round(benefice_eligible, 2),
             'nb_articles_eligible': nb_articles_eligible,
             'details': {
                 'marge_haute': {
                     'description': f"> {seuil_marge_val}% marge",
-                    'base_ca': round(ca_marge_haute, 2),
+                    'base_ca': round(ca_marge_haute_commissionnee, 2),
                     'taux': float(mb_config.regle_ca),
                     'commission': round(comm_regle_ca, 2),
                 },
                 'marge_basse': {
                     'description': f"<= {seuil_marge_val}% marge",
-                    'base_benefice': round(benefice_marge_basse, 2),
+                    'base_benefice': round(benefice_marge_basse_commissionnee, 2),
                     'taux': float(mb_config.regle_benefice),
                     'commission': round(comm_regle_benefice, 2),
                 }

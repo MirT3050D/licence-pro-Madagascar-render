@@ -219,7 +219,7 @@
         <!-- Info message if not reached -->
         <div v-if="!kpiData.commission_media_buyer.statut?.seuil_atteint" class="mb-notice-mobile">
           <ion-icon :icon="timeOutline" />
-          <span>Compteur bloqué tant que le coût pub n'est pas couvert. Com. en attente : <strong class="text-orange">{{ formatPrice(kpiData.commission_media_buyer.commission_potentielle || 0) }}</strong></span>
+          <span>Compteur bloqué à 0 Ar. La commission démarrera dès remboursement total du coût publicitaire de <strong>{{ formatPrice(kpiData.commission_media_buyer.statut?.cout_pub || 0) }}</strong>.</span>
         </div>
 
         <!-- 2 Rules Breakdown -->
@@ -230,7 +230,7 @@
               <span class="rule-rate">{{ kpiData.commission_media_buyer.config?.regle_ca }}% CA</span>
             </div>
             <div class="rule-box-val">+{{ formatPrice(kpiData.commission_media_buyer.details?.marge_haute?.commission || 0) }}</div>
-            <div class="rule-box-sub">sur CA {{ formatPrice(kpiData.commission_media_buyer.details?.marge_haute?.base_ca || 0) }}</div>
+            <div class="rule-box-sub">sur CA excédentaire : {{ formatPrice(kpiData.commission_media_buyer.details?.marge_haute?.base_ca || 0) }}</div>
           </div>
 
           <div class="rule-box-mobile rule-box-green">
@@ -239,7 +239,7 @@
               <span class="rule-rate">{{ kpiData.commission_media_buyer.config?.regle_benefice }}% Marge</span>
             </div>
             <div class="rule-box-val text-green">+{{ formatPrice(kpiData.commission_media_buyer.details?.marge_basse?.commission || 0) }}</div>
-            <div class="rule-box-sub">sur Bénéf. {{ formatPrice(kpiData.commission_media_buyer.details?.marge_basse?.base_benefice || 0) }}</div>
+            <div class="rule-box-sub">sur Bénéf. excédentaire : {{ formatPrice(kpiData.commission_media_buyer.details?.marge_basse?.base_benefice || 0) }}</div>
           </div>
         </div>
 

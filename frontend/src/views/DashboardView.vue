@@ -332,15 +332,11 @@
 
           <div class="mb-notice" :class="data?.commission_media_buyer?.statut?.seuil_atteint ? 'notice-success' : 'notice-warning'">
             <div v-if="data?.commission_media_buyer?.statut?.seuil_atteint">
-              🎉 <strong>Compteur actif :</strong> Le coût de publicité a été intégralement récupéré. La commission de <strong>{{ formatCurrency(data?.commission_media_buyer?.commission_due || 0) }}</strong> est débloquée et comptabilisée.
+              🎉 <strong>Compteur actif (Option 2) :</strong> Le coût de publicité a été intégralement remboursé. Les commissions sont calculées uniquement sur les ventes excédentaires au-delà de ce coût (<strong>{{ formatCurrency(data?.commission_media_buyer?.commission_due || 0) }}</strong> débloqués).
             </div>
             <div v-else>
-              ⚠️ <strong>Compteur bloqué à 0 Ar :</strong> La commission commencera uniquement une fois le coût publicitaire de 
-              <strong>{{ formatCurrency(data?.commission_media_buyer?.statut?.cout_pub || 0) }}</strong> amorti.
-              <div class="mt-1 text-xs">
-                Commission potentielle accumulée en attente : 
-                <strong class="text-purple">{{ formatCurrency(data?.commission_media_buyer?.commission_potentielle || 0) }}</strong>
-              </div>
+              ⚠️ <strong>Compteur bloqué à 0 Ar :</strong> Le coût publicitaire de 
+              <strong>{{ formatCurrency(data?.commission_media_buyer?.statut?.cout_pub || 0) }}</strong> doit d'abord être totalement remboursé. Le compteur de commission démarrera dès dépassement de ce seuil.
             </div>
           </div>
         </div>
@@ -348,7 +344,7 @@
         <!-- Colonne 2: Décomposition par règle -->
         <div class="mb-box mb-rules-box">
           <div class="mb-box-header">
-            <span class="mb-box-title">Décomposition par règle commerciale</span>
+            <span class="mb-box-title">Commissions sur les ventes excédentaires</span>
             <span class="text-xs text-muted">
               {{ data?.commission_media_buyer?.nb_articles_eligible || 0 }} article(s) éligible(s)
             </span>
@@ -359,15 +355,15 @@
             <div class="rule-detail-card card-marge-haute">
               <div class="rule-card-top">
                 <span class="rule-tag tag-cyan">Produits marge &gt; {{ data?.commission_media_buyer?.config?.seuil_marge || 40 }}%</span>
-                <span class="rule-pct">{{ data?.commission_media_buyer?.config?.regle_ca || 10 }}% sur CA</span>
+                <span class="rule-pct">{{ data?.commission_media_buyer?.config?.regle_ca || 10 }}% sur CA excédentaire</span>
               </div>
               <div class="rule-card-body">
                 <div class="rule-stat">
-                  <span class="lbl">CA des produits éligibles :</span>
+                  <span class="lbl">CA commissionné (après pub) :</span>
                   <span class="val">{{ formatCurrency(data?.commission_media_buyer?.details?.marge_haute?.base_ca || 0) }}</span>
                 </div>
                 <div class="rule-stat">
-                  <span class="lbl">Commission calculée :</span>
+                  <span class="lbl">Commission :</span>
                   <span class="val text-cyan font-bold">+{{ formatCurrency(data?.commission_media_buyer?.details?.marge_haute?.commission || 0) }}</span>
                 </div>
               </div>
@@ -377,15 +373,15 @@
             <div class="rule-detail-card card-marge-basse">
               <div class="rule-card-top">
                 <span class="rule-tag tag-emerald">Produits marge &le; {{ data?.commission_media_buyer?.config?.seuil_marge || 40 }}%</span>
-                <span class="rule-pct">{{ data?.commission_media_buyer?.config?.regle_benefice || 30 }}% sur Bénéfice</span>
+                <span class="rule-pct">{{ data?.commission_media_buyer?.config?.regle_benefice || 30 }}% sur Bénéfice excédentaire</span>
               </div>
               <div class="rule-card-body">
                 <div class="rule-stat">
-                  <span class="lbl">Bénéfice brut éligible :</span>
+                  <span class="lbl">Bénéfice commissionné (après pub) :</span>
                   <span class="val">{{ formatCurrency(data?.commission_media_buyer?.details?.marge_basse?.base_benefice || 0) }}</span>
                 </div>
                 <div class="rule-stat">
-                  <span class="lbl">Commission calculée :</span>
+                  <span class="lbl">Commission :</span>
                   <span class="val text-emerald font-bold">+{{ formatCurrency(data?.commission_media_buyer?.details?.marge_basse?.commission || 0) }}</span>
                 </div>
               </div>
