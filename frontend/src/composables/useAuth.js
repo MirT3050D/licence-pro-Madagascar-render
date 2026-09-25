@@ -20,6 +20,18 @@ export function useAuth() {
     return res.data
   }
 
+  async function register(registrationData) {
+    const res = await apiClient.post('/auth/register/', registrationData)
+    token.value = res.data.access
+    user.value = res.data.user
+
+    localStorage.setItem('access_token', res.data.access)
+    localStorage.setItem('refresh_token', res.data.refresh)
+    localStorage.setItem('user', JSON.stringify(res.data.user))
+
+    return res.data
+  }
+
   function logout() {
     token.value = null
     user.value = null
@@ -46,6 +58,7 @@ export function useAuth() {
     isAuthenticated,
     isSuperAdmin,
     login,
+    register,
     logout,
     fetchProfile,
   }

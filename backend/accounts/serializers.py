@@ -65,3 +65,55 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         user_serializer = UtilisateurSerializer(self.user)
         data['user'] = user_serializer.data
         return data
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=6)
+    password_confirm = serializers.CharField(write_only=True, min_length=6)
+    role_type = serializers.ChoiceField(choices=['admin', 'vendeur'], default='vendeur', write_only=True)
+
+    class Meta:
+        model = Utilisateur
+        fields = ['id', 'nom', 'prenom', 'numero', 'email', 'password', 'password_confirm', 'role_type']
+
+    def validate(self, attrs):
+        if attrs.get('password') != attrs.get('password_confirm'):
+            raise serializers.ValidationError({
+                'password_confirm': "Les mots de passe ne correspondent pas."
+            })
+        email = attrs.get('email', '').strip().lower()
+        if Utilisateur.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError({
+                'email': "Cette adresse email est déjà utilisée par un autre compte."
+            })
+        attrs['email'] = email
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('password_confirm', None)
+        password = validated_data.pop('password')
+        role_type = validated_data.pop('role_type', 'vendeur')
+
+        if role_type == 'admin':
+            role_obj, _ = Role.objects.get_or_create(
+                nom='admin',
+                defaults={'label': 'Administrateur', 'point': 100}
+            )
+            is_staff = True
+            is_superuser = True
+        else:
+            role_obj, _ = Role.objects.get_or_create(
+                nom='vendeur',
+                defaults={'label': 'Affilié / Vendeur', 'point': 10}
+            )
+            is_staff = False
+            is_superuser = False
+
+        user = Utilisateur.objects.create_user(
+            password=password,
+            role=role_obj,
+            is_staff=is_staff,
+            is_superuser=is_superuser,
+            **validated_data
+        )
+        return user
