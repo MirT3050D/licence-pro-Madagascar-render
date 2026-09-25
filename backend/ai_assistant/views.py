@@ -542,3 +542,57 @@ class AIChatView(APIView):
             ),
             "order_intent": None
         }
+
+
+class AIStatusView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        sa_raw = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+        has_sa_env = bool(sa_raw)
+        has_gemini_key = bool(os.getenv("GEMINI_API_KEY"))
+
+        vertex_error = None
+        sa_project_id = None
+        sa_email = None
+
+        if has_sa_env:
+            try:
+                clean_json = sa_raw.strip()
+                if (clean_json.startswith("'") and clean_json.endswith("'")) or (clean_json.startswith('"') and clean_json.endswith('"')):
+                    clean_json = clean_json[1:-1]
+                import base64
+                try:
+                    decoded = base64.b64decode(clean_json).decode('utf-8')
+                    if "private_key" in decoded:
+                        clean_json = decoded
+                except Exception:
+                    pass
+                info = json.loads(clean_json)
+                sa_project_id = info.get("project_id")
+                sa_email = info.get("client_email")
+            except Exception as e_p:
+                vertex_error = f"JSON parse error: {e_p}"
+
+        test_reply = None
+        model_used = None
+        try:
+            model = get_vertex_gemini_model("gemini-2.5-flash")
+            if model:
+                model_used = "gemini-2.5-flash"
+                res = model.generate_content("Dis 'OK' en 1 mot")
+                test_reply = res.text.strip() if res else None
+            else:
+                vertex_error = vertex_error or "get_vertex_gemini_model returned None"
+        except Exception as e_v:
+            vertex_error = str(e_v)
+
+        return Response({
+            "has_sa_env": has_sa_env,
+            "has_gemini_key": has_gemini_key,
+            "sa_project_id": sa_project_id,
+            "sa_email": sa_email,
+            "model_used": model_used,
+            "vertex_error": vertex_error,
+            "test_reply": test_reply,
+        })
