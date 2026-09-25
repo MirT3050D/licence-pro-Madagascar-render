@@ -1,12 +1,14 @@
+from decimal import Decimal
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Sum, Count, F, DecimalField, ExpressionWrapper, Q
 from django.db.models.functions import TruncDate
-from .models import MethodePaiement, Vente, Commande
-from .serializers import MethodePaiementSerializer, VenteSerializer, VenteCreateSerializer
+from .models import MethodePaiement, Vente, Commande, MediaBuyerCommission
+from .serializers import MethodePaiementSerializer, VenteSerializer, VenteCreateSerializer, MediaBuyerCommissionSerializer
 from accounts.models import Utilisateur
+from clients.models import Provenance
 
 
 class MethodePaiementViewSet(viewsets.ModelViewSet):
@@ -263,19 +265,181 @@ class DashboardView(APIView):
 
         classement_vendeurs.sort(key=lambda x: (x['chiffre_affaires'], x['points'], x['nombre_ventes']), reverse=True)
 
+        # 6. Commission Media Buyer
+        mb_config = MediaBuyerCommission.objects.filter(is_active=True).first()
+        if not mb_config:
+            mb_config = MediaBuyerCommission.objects.create(
+                cout_pub=Decimal('0.00'),
+                regle_ca=Decimal('10.00'),
+                regle_benefice=Decimal('30.00'),
+                seuil_marge=Decimal('40.00'),
+                base_recouvrement='benefice'
+            )
+            fb_wa = Provenance.objects.filter(label__iregex=r'(facebook|whatsapp)')
+            if fb_wa.exists():
+                mb_config.provenances.set(fb_wa)
+
+        eligible_prov_ids = list(mb_config.provenances.values_list('id', flat=True))
+
+        if provenance_id:
+            try:
+                p_id_int = int(provenance_id)
+                if p_id_int in eligible_prov_ids:
+                    mb_commandes = commandes_qs.filter(vente__client__provenance_id=p_id_int)
+                else:
+                    mb_commandes = Commande.objects.none()
+            except (ValueError, TypeError):
+                mb_commandes = Commande.objects.none()
+        else:
+            mb_commandes = commandes_qs.filter(vente__client__provenance_id__in=eligible_prov_ids)
+
+        ca_eligible = 0.0
+        benefice_eligible = 0.0
+        comm_regle_ca = 0.0
+        comm_regle_benefice = 0.0
+        ca_marge_haute = 0.0
+        benefice_marge_basse = 0.0
+        nb_articles_eligible = 0
+
+        seuil_marge_val = float(mb_config.seuil_marge)
+        pct_ca = float(mb_config.regle_ca) / 100.0
+        pct_benefice = float(mb_config.regle_benefice) / 100.0
+        cout_pub_val = float(mb_config.cout_pub)
+
+        for cmd in mb_commandes:
+            ca_l = float(cmd.quantite * cmd.prix_unitaire)
+            cout_l = float(cmd.quantite * cmd.produit.prix_achat)
+            benef_l = ca_l - cout_l
+
+            ca_eligible += ca_l
+            benefice_eligible += benef_l
+            nb_articles_eligible += cmd.quantite
+
+            taux_marge = (benef_l / ca_l * 100.0) if ca_l > 0 else 0.0
+
+            if taux_marge > seuil_marge_val:
+                # 10% sur le CA (strict sup)
+                c = ca_l * pct_ca
+                comm_regle_ca += c
+                ca_marge_haute += ca_l
+            else:
+                # 30% sur le bénéfice (40% et moins)
+                c = max(0.0, benef_l) * pct_benefice
+                comm_regle_benefice += c
+                benefice_marge_basse += max(0.0, benef_l)
+
+        commission_potentielle = comm_regle_ca + comm_regle_benefice
+        recouvrement_actuel = benefice_eligible if mb_config.base_recouvrement == 'benefice' else ca_eligible
+
+        if cout_pub_val <= 0:
+            seuil_atteint = True
+            progression_recouvrement = 100.0
+            commission_due = commission_potentielle
+            reste_a_recouvrir = 0.0
+        else:
+            seuil_atteint = recouvrement_actuel >= cout_pub_val
+            progression_recouvrement = min(100.0, round((recouvrement_actuel / cout_pub_val) * 100.0, 1))
+            reste_a_recouvrir = max(0.0, cout_pub_val - recouvrement_actuel)
+            commission_due = commission_potentielle if seuil_atteint else 0.0
+
+        commission_media_buyer = {
+            'config': {
+                'id': mb_config.id,
+                'cout_pub': cout_pub_val,
+                'regle_ca': float(mb_config.regle_ca),
+                'regle_benefice': float(mb_config.regle_benefice),
+                'seuil_marge': seuil_marge_val,
+                'base_recouvrement': mb_config.base_recouvrement,
+                'provenances': list(mb_config.provenances.values('id', 'label')),
+            },
+            'statut': {
+                'seuil_atteint': seuil_atteint,
+                'cout_pub': cout_pub_val,
+                'recouvrement_actuel': round(recouvrement_actuel, 2),
+                'reste_a_recouvrir': round(reste_a_recouvrir, 2),
+                'progression_recouvrement': progression_recouvrement,
+                'base_recouvrement_label': "Bénéfice brut" if mb_config.base_recouvrement == 'benefice' else "Chiffre d'affaires",
+            },
+            'commission_due': round(commission_due, 2),
+            'commission_potentielle': round(commission_potentielle, 2),
+            'ca_eligible': round(ca_eligible, 2),
+            'benefice_eligible': round(benefice_eligible, 2),
+            'nb_articles_eligible': nb_articles_eligible,
+            'details': {
+                'marge_haute': {
+                    'description': f"> {seuil_marge_val}% marge",
+                    'base_ca': round(ca_marge_haute, 2),
+                    'taux': float(mb_config.regle_ca),
+                    'commission': round(comm_regle_ca, 2),
+                },
+                'marge_basse': {
+                    'description': f"<= {seuil_marge_val}% marge",
+                    'base_benefice': round(benefice_marge_basse, 2),
+                    'taux': float(mb_config.regle_benefice),
+                    'commission': round(comm_regle_benefice, 2),
+                }
+            }
+        }
+
         return Response({
             'kpis': {
                 'chiffre_affaires': ca_total,
                 'marge_nette': marge_nette,
                 'nombre_ventes': total_ventes,
                 'quantite_totale': quantite_totale,
+                'commission_media_buyer': round(commission_due, 2),
             },
             'chiffre_affaires': ca_total,
             'marge_nette': marge_nette,
             'nombre_ventes': total_ventes,
             'quantite_totale': quantite_totale,
+            'commission_media_buyer': commission_media_buyer,
             'evolution_ventes': list(evolution_ventes),
             'repartition_paiements': list(repartition_paiements),
             'top_produits': list(top_produits),
             'classement_vendeurs': classement_vendeurs,
         })
+
+
+class MediaBuyerCommissionConfigView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        config = MediaBuyerCommission.objects.filter(is_active=True).first()
+        if not config:
+            config = MediaBuyerCommission.objects.create(
+                cout_pub=Decimal('0.00'),
+                regle_ca=Decimal('10.00'),
+                regle_benefice=Decimal('30.00'),
+                seuil_marge=Decimal('40.00'),
+                base_recouvrement='benefice',
+                is_active=True
+            )
+            fb_wa = Provenance.objects.filter(label__iregex=r'(facebook|whatsapp)')
+            if fb_wa.exists():
+                config.provenances.set(fb_wa)
+        return config
+
+    def get(self, request):
+        config = self.get_object()
+        serializer = MediaBuyerCommissionSerializer(config)
+        return Response(serializer.data)
+
+    def put(self, request):
+        user = request.user
+        is_admin = (
+            user.is_staff or 
+            user.is_superuser or 
+            (user.role and user.role.point >= 50) or 
+            (user.role and user.role.nom == 'admin')
+        )
+        if not is_admin:
+            return Response(
+                {"error": "Permission refusée. Seul un administrateur peut modifier la configuration de commission."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        config = self.get_object()
+        serializer = MediaBuyerCommissionSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

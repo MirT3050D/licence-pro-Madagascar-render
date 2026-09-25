@@ -1,9 +1,9 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import MethodePaiement, Vente, Commande
-from clients.models import Client
+from .models import MethodePaiement, Vente, Commande, MediaBuyerCommission
+from clients.models import Client, Provenance
 from catalog.models import Produit
-from clients.serializers import ClientSerializer
+from clients.serializers import ClientSerializer, ProvenanceSerializer
 from accounts.models import Utilisateur
 from accounts.serializers import UtilisateurSerializer
 
@@ -162,3 +162,20 @@ class VenteCreateSerializer(serializers.Serializer):
                     )
 
         return instance
+
+
+class MediaBuyerCommissionSerializer(serializers.ModelSerializer):
+    provenances_details = ProvenanceSerializer(source='provenances', many=True, read_only=True)
+    provenances = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Provenance.objects.all(),
+        required=False
+    )
+
+    class Meta:
+        model = MediaBuyerCommission
+        fields = [
+            'id', 'cout_pub', 'regle_ca', 'regle_benefice', 'seuil_marge',
+            'base_recouvrement', 'provenances', 'provenances_details',
+            'is_active', 'created_at', 'updated_at'
+        ]

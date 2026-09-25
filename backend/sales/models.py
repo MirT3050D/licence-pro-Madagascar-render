@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
-from clients.models import Client
+from clients.models import Client, Provenance
 from catalog.models import Produit
 
 
@@ -91,3 +91,56 @@ class Commande(models.Model):
     @property
     def sous_total(self):
         return self.quantite * self.prix_unitaire
+
+
+class MediaBuyerCommission(models.Model):
+    cout_pub = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0.00,
+        verbose_name="Coût de publicité (Ar)"
+    )
+    regle_ca = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10.00,
+        verbose_name="Taux com sur CA si marge > seuil (%)"
+    )
+    regle_benefice = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=30.00,
+        verbose_name="Taux com sur Bénéfice si marge <= seuil (%)"
+    )
+    seuil_marge = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=40.00,
+        verbose_name="Seuil de marge bénéficiaire (%)"
+    )
+    base_recouvrement = models.CharField(
+        max_length=20,
+        default='benefice',
+        choices=[
+            ('benefice', 'Bénéfice brut'),
+            ('ca', "Chiffre d'affaires"),
+        ],
+        verbose_name="Base de recouvrement du coût pub"
+    )
+    provenances = models.ManyToManyField(
+        Provenance,
+        blank=True,
+        related_name='media_buyer_commissions',
+        verbose_name="Provenances éligibles"
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'media_buyer_commission'
+        verbose_name = 'Commission Media Buyer'
+        verbose_name_plural = 'Commissions Media Buyer'
+
+    def __str__(self):
+        return f"Commission MB #{self.id} (Coût pub: {self.cout_pub} Ar, CA: {self.regle_ca}%, Marge: {self.regle_benefice}%)"

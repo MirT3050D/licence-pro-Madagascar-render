@@ -225,6 +225,182 @@
           <span class="badge badge-warning">Transactions</span>
         </div>
       </div>
+
+      <!-- Commission Media Buyer -->
+      <div class="card kpi-card kpi-card-mb">
+        <div class="kpi-header">
+          <span class="kpi-title">Commission Media Buyer</span>
+          <div class="kpi-icon-box icon-purple">
+            <Target :size="22" />
+          </div>
+        </div>
+        <div class="kpi-value text-purple">{{ formatCurrency(data?.commission_media_buyer?.commission_due || 0) }}</div>
+        <div class="kpi-subtext">
+          <span v-if="data?.commission_media_buyer?.statut?.seuil_atteint" class="badge badge-success">
+            ✓ Compteur actif (100% amorti)
+          </span>
+          <span v-else class="badge badge-warning">
+            ⏳ Coût pub : {{ data?.commission_media_buyer?.statut?.progression_recouvrement || 0 }}% amorti
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION DÉTAILLÉE COMMISSION MEDIA BUYER -->
+    <div class="card media-buyer-section" v-if="data?.commission_media_buyer">
+      <div class="mb-section-header">
+        <div class="mb-header-title-wrap">
+          <div class="mb-icon-badge">
+            <Megaphone :size="22" />
+          </div>
+          <div>
+            <div class="mb-title-row">
+              <h3 class="mb-title">Suivi Commission Media Buyer</h3>
+              <div class="provenance-tags">
+                <span class="prov-tag-label">Provenances éligibles :</span>
+                <span
+                  v-for="prov in (data?.commission_media_buyer?.config?.provenances || [])"
+                  :key="prov.id"
+                  class="badge badge-prov"
+                >
+                  🌐 {{ prov.label }}
+                </span>
+                <span v-if="!data?.commission_media_buyer?.config?.provenances?.length" class="text-xs text-muted">
+                  Aucune configurée
+                </span>
+              </div>
+            </div>
+            <p class="text-xs text-muted mb-rules-summary">
+              Règles : 
+              <strong class="text-primary">{{ data?.commission_media_buyer?.config?.regle_ca || 10 }}% sur le CA</strong> pour les ventes à marge &gt; {{ data?.commission_media_buyer?.config?.seuil_marge || 40 }}% (strict sup) • 
+              <strong class="text-emerald">{{ data?.commission_media_buyer?.config?.regle_benefice || 30 }}% sur le bénéfice</strong> pour les ventes à marge &le; {{ data?.commission_media_buyer?.config?.seuil_marge || 40 }}%
+            </p>
+          </div>
+        </div>
+        <button
+          v-if="isSuperAdmin"
+          @click="openCommissionConfigModal"
+          class="btn btn-secondary btn-sm btn-config-mb"
+          title="Modifier les taux, le coût publicitaire et les provenances"
+        >
+          <Sliders :size="15" />
+          <span>Configurer règles</span>
+        </button>
+      </div>
+
+      <!-- MB Content Grid: Jauge à gauche, Décomposition à droite -->
+      <div class="mb-content-grid">
+        <!-- Colonne 1: Amortissement du Coût Publicitaire -->
+        <div class="mb-box mb-spend-box">
+          <div class="mb-box-header">
+            <span class="mb-box-title">Amortissement du Coût Publicitaire</span>
+            <span
+              :class="data?.commission_media_buyer?.statut?.seuil_atteint ? 'badge badge-success' : 'badge badge-warning'"
+            >
+              {{ data?.commission_media_buyer?.statut?.seuil_atteint ? '✓ Rentabilisé' : '⏳ Amortissement en cours' }}
+            </span>
+          </div>
+
+          <div class="mb-progress-block">
+            <div class="mb-progress-info">
+              <span class="text-sm">
+                Généré ({{ data?.commission_media_buyer?.statut?.base_recouvrement_label }}) :
+                <strong class="text-cyan">{{ formatCurrency(data?.commission_media_buyer?.statut?.recouvrement_actuel || 0) }}</strong>
+              </span>
+              <span class="text-sm">
+                Coût publicité :
+                <strong>{{ formatCurrency(data?.commission_media_buyer?.statut?.cout_pub || 0) }}</strong>
+              </span>
+            </div>
+            <div class="progress-bar-track">
+              <div
+                class="progress-bar-fill"
+                :style="{ width: `${data?.commission_media_buyer?.statut?.progression_recouvrement || 0}%` }"
+                :class="{ 'fill-complete': data?.commission_media_buyer?.statut?.seuil_atteint }"
+              ></div>
+            </div>
+            <div class="mb-progress-footer">
+              <span>Progression : <strong>{{ data?.commission_media_buyer?.statut?.progression_recouvrement || 0 }}%</strong></span>
+              <span v-if="!data?.commission_media_buyer?.statut?.seuil_atteint" class="text-amber">
+                Reste à amortir : <strong>{{ formatCurrency(data?.commission_media_buyer?.statut?.reste_a_recouvrir || 0) }}</strong>
+              </span>
+              <span v-else class="text-emerald">
+                ✓ Seuil dépassé de {{ formatCurrency((data?.commission_media_buyer?.statut?.recouvrement_actuel || 0) - (data?.commission_media_buyer?.statut?.cout_pub || 0)) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="mb-notice" :class="data?.commission_media_buyer?.statut?.seuil_atteint ? 'notice-success' : 'notice-warning'">
+            <div v-if="data?.commission_media_buyer?.statut?.seuil_atteint">
+              🎉 <strong>Compteur actif :</strong> Le coût de publicité a été intégralement récupéré. La commission de <strong>{{ formatCurrency(data?.commission_media_buyer?.commission_due || 0) }}</strong> est débloquée et comptabilisée.
+            </div>
+            <div v-else>
+              ⚠️ <strong>Compteur bloqué à 0 Ar :</strong> La commission commencera uniquement une fois le coût publicitaire de 
+              <strong>{{ formatCurrency(data?.commission_media_buyer?.statut?.cout_pub || 0) }}</strong> amorti.
+              <div class="mt-1 text-xs">
+                Commission potentielle accumulée en attente : 
+                <strong class="text-purple">{{ formatCurrency(data?.commission_media_buyer?.commission_potentielle || 0) }}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Colonne 2: Décomposition par règle -->
+        <div class="mb-box mb-rules-box">
+          <div class="mb-box-header">
+            <span class="mb-box-title">Décomposition par règle commerciale</span>
+            <span class="text-xs text-muted">
+              {{ data?.commission_media_buyer?.nb_articles_eligible || 0 }} article(s) éligible(s)
+            </span>
+          </div>
+
+          <div class="rules-cards-stack">
+            <!-- Règle 1: Marge > seuil -->
+            <div class="rule-detail-card card-marge-haute">
+              <div class="rule-card-top">
+                <span class="rule-tag tag-cyan">Produits marge &gt; {{ data?.commission_media_buyer?.config?.seuil_marge || 40 }}%</span>
+                <span class="rule-pct">{{ data?.commission_media_buyer?.config?.regle_ca || 10 }}% sur CA</span>
+              </div>
+              <div class="rule-card-body">
+                <div class="rule-stat">
+                  <span class="lbl">CA des produits éligibles :</span>
+                  <span class="val">{{ formatCurrency(data?.commission_media_buyer?.details?.marge_haute?.base_ca || 0) }}</span>
+                </div>
+                <div class="rule-stat">
+                  <span class="lbl">Commission calculée :</span>
+                  <span class="val text-cyan font-bold">+{{ formatCurrency(data?.commission_media_buyer?.details?.marge_haute?.commission || 0) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Règle 2: Marge <= seuil -->
+            <div class="rule-detail-card card-marge-basse">
+              <div class="rule-card-top">
+                <span class="rule-tag tag-emerald">Produits marge &le; {{ data?.commission_media_buyer?.config?.seuil_marge || 40 }}%</span>
+                <span class="rule-pct">{{ data?.commission_media_buyer?.config?.regle_benefice || 30 }}% sur Bénéfice</span>
+              </div>
+              <div class="rule-card-body">
+                <div class="rule-stat">
+                  <span class="lbl">Bénéfice brut éligible :</span>
+                  <span class="val">{{ formatCurrency(data?.commission_media_buyer?.details?.marge_basse?.base_benefice || 0) }}</span>
+                </div>
+                <div class="rule-stat">
+                  <span class="lbl">Commission calculée :</span>
+                  <span class="val text-emerald font-bold">+{{ formatCurrency(data?.commission_media_buyer?.details?.marge_basse?.commission || 0) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Total Bar -->
+            <div class="rule-total-bar">
+              <span class="total-lbl">Commission Media Buyer Débloquée :</span>
+              <span class="total-val" :class="data?.commission_media_buyer?.statut?.seuil_atteint ? 'text-purple' : 'text-muted-strikethrough'">
+                {{ formatCurrency(data?.commission_media_buyer?.commission_due || 0) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Charts Row -->
@@ -344,6 +520,125 @@
         </div>
       </div>
     </div>
+
+    <!-- MODAL DE CONFIGURATION COMMISSION MEDIA BUYER -->
+    <div v-if="showConfigModal" class="modal-backdrop" @click.self="showConfigModal = false">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="flex items-center gap-2">
+            <Sliders :size="18" class="text-primary" />
+            <h3 class="font-bold text-base">Configuration Commission Media Buyer</h3>
+          </div>
+          <button @click="showConfigModal = false" class="btn-close" type="button">
+            <X :size="18" />
+          </button>
+        </div>
+
+        <form @submit.prevent="saveCommissionConfig" class="modal-body">
+          <div class="form-group mb-3">
+            <label class="form-label">Coût publicité / Budget publicitaire (Ar)</label>
+            <input
+              v-model.number="configForm.cout_pub"
+              type="number"
+              step="any"
+              min="0"
+              class="form-input"
+              placeholder="Ex: 500000"
+              required
+            />
+            <span class="form-help text-xs text-muted">
+              Le compteur de commission démarre uniquement une fois ce montant rentabilisé.
+            </span>
+          </div>
+
+          <div class="form-row-2 mb-3">
+            <div class="form-group">
+              <label class="form-label">Taux com sur CA si marge &gt; seuil (%)</label>
+              <input
+                v-model.number="configForm.regle_ca"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                class="form-input"
+                required
+              />
+              <span class="text-xs text-muted">Actuellement : 10%</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Taux com sur Bénéfice si marge &le; seuil (%)</label>
+              <input
+                v-model.number="configForm.regle_benefice"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                class="form-input"
+                required
+              />
+              <span class="text-xs text-muted">Actuellement : 30%</span>
+            </div>
+          </div>
+
+          <div class="form-row-2 mb-3">
+            <div class="form-group">
+              <label class="form-label">Seuil de marge bénéficiaire (%)</label>
+              <input
+                v-model.number="configForm.seuil_marge"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                class="form-input"
+                required
+              />
+              <span class="text-xs text-muted">Strictement supérieur (Actuellement : 40%)</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Base de rentabilisation du coût pub</label>
+              <select v-model="configForm.base_recouvrement" class="form-select">
+                <option value="benefice">Bénéfice brut (Recommandé)</option>
+                <option value="ca">Chiffre d'affaires</option>
+              </select>
+              <span class="text-xs text-muted">Montant généré servant à amortir le coût pub</span>
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label">Provenances éligibles aux commissions</label>
+            <div class="provenances-checkbox-grid">
+              <label
+                v-for="prov in provenancesList"
+                :key="prov.id"
+                class="prov-checkbox-label"
+              >
+                <input
+                  type="checkbox"
+                  :value="prov.id"
+                  v-model="configForm.provenances"
+                />
+                <span>{{ prov.label }}</span>
+              </label>
+            </div>
+            <span class="text-xs text-muted">Seules les ventes issues de ces provenances génèrent des commissions (ex: Facebook, WhatsApp).</span>
+          </div>
+
+          <div v-if="configError" class="alert alert-danger mb-3">
+            {{ configError }}
+          </div>
+
+          <div class="modal-footer">
+            <button @click="showConfigModal = false" type="button" class="btn btn-secondary">
+              Annuler
+            </button>
+            <button type="submit" class="btn btn-primary" :disabled="savingConfig">
+              <span v-if="savingConfig">Enregistrement...</span>
+              <span v-else>Enregistrer les paramètres</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -362,7 +657,11 @@ import {
   CreditCard,
   RotateCcw,
   User,
-  Globe
+  Globe,
+  Target,
+  Megaphone,
+  Sliders,
+  X
 } from '@lucide/vue'
 import {
   Chart as ChartJS,
@@ -380,7 +679,7 @@ import { Line, Doughnut } from 'vue-chartjs'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
 
-const { user } = useAuth()
+const { user, isSuperAdmin } = useAuth()
 
 // Register Chart.js elements
 ChartJS.register(
@@ -625,6 +924,61 @@ function formatCurrency(val) {
   const num = Number(val)
   if (isNaN(num)) return '0 Ar'
   return new Intl.NumberFormat('fr-MG').format(Math.round(num)) + ' Ar'
+}
+
+// Media Buyer Commission Modal & Settings
+const showConfigModal = ref(false)
+const savingConfig = ref(false)
+const configError = ref('')
+const configForm = ref({
+  cout_pub: 0,
+  regle_ca: 10,
+  regle_benefice: 30,
+  seuil_marge: 40,
+  base_recouvrement: 'benefice',
+  provenances: []
+})
+
+function openCommissionConfigModal() {
+  const current = data.value?.commission_media_buyer?.config
+  if (current) {
+    configForm.value = {
+      cout_pub: current.cout_pub ?? 0,
+      regle_ca: current.regle_ca ?? 10,
+      regle_benefice: current.regle_benefice ?? 30,
+      seuil_marge: current.seuil_marge ?? 40,
+      base_recouvrement: current.base_recouvrement ?? 'benefice',
+      provenances: (current.provenances || []).map(p => p.id)
+    }
+  } else {
+    configForm.value = {
+      cout_pub: 0,
+      regle_ca: 10,
+      regle_benefice: 30,
+      seuil_marge: 40,
+      base_recouvrement: 'benefice',
+      provenances: provenancesList.value
+        .filter(p => /facebook|whatsapp/i.test(p.label))
+        .map(p => p.id)
+    }
+  }
+  configError.value = ''
+  showConfigModal.value = true
+}
+
+async function saveCommissionConfig() {
+  savingConfig.value = true
+  configError.value = ''
+  try {
+    await apiClient.put('/ventes/commission-media-buyer/', configForm.value)
+    showConfigModal.value = false
+    await loadDashboard()
+  } catch (err) {
+    console.error('Erreur sauvegarde config commission:', err)
+    configError.value = err.response?.data?.error || err.message || 'Erreur lors de la sauvegarde.'
+  } finally {
+    savingConfig.value = false
+  }
 }
 
 onMounted(async () => {
@@ -981,5 +1335,388 @@ onMounted(async () => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* MEDIA BUYER KPI & SECTION STYLING */
+.icon-purple {
+  background: rgba(168, 85, 247, 0.16);
+  color: #c084fc;
+}
+
+.text-purple {
+  color: #c084fc;
+}
+
+.text-cyan {
+  color: #38bdf8;
+}
+
+.media-buyer-section {
+  padding: 1.5rem;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 27, 75, 0.35) 100%);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 20px -5px rgba(168, 85, 247, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.mb-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mb-header-title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.mb-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(99, 102, 241, 0.3));
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #e879f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mb-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mb-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.provenance-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.prov-tag-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.badge-prov {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+.btn-config-mb {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #e9d5ff;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-config-mb:hover {
+  background: rgba(168, 85, 247, 0.3);
+  border-color: rgba(168, 85, 247, 0.6);
+  color: #fff;
+}
+
+.mb-content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+.mb-box {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mb-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mb-box-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mb-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mb-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b 0%, #3b82f6 50%, #10b981 100%);
+  border-radius: 9999px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-bar-fill.fill-complete {
+  background: linear-gradient(90deg, #10b981, #059669);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.mb-progress-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.mb-notice {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+}
+
+.notice-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+.notice-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+.rules-cards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rule-detail-card {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rule-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rule-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.tag-cyan {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.tag-emerald {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.rule-pct {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.rule-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.rule-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rule-stat .lbl {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.rule-total-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.total-lbl {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #e9d5ff;
+}
+
+.total-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.text-muted-strikethrough {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* MODAL STYLES */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-card {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 540px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: modalIn 0.2s ease-out;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.btn-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.provenances-checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prov-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 </style>

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import MethodePaiement, Vente, Commande
+from .models import MethodePaiement, Vente, Commande, MediaBuyerCommission
 
 
 class CommandeInline(admin.TabularInline):
@@ -35,3 +35,9 @@ class CommandeAdmin(admin.ModelAdmin):
     @admin.display(description='Sous-total')
     def get_sous_total(self, obj):
         return f"{obj.sous_total} Ar"
+
+
+@admin.register(MediaBuyerCommission)
+class MediaBuyerCommissionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'cout_pub', 'regle_ca', 'regle_benefice', 'seuil_marge', 'base_recouvrement', 'is_active', 'updated_at')
+    filter_horizontal = ('provenances',)
