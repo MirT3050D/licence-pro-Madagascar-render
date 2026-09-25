@@ -107,8 +107,25 @@
                   <div class="text-xs text-muted">{{ u.numero || 'Non renseigné' }}</div>
                 </td>
                 <td>
-                  <span class="badge" :class="u.role?.nom === 'admin' ? 'badge-primary' : 'badge-neutral'">
-                    {{ u.role?.label || 'Vendeur' }} ({{ u.role?.point || 0 }} pts)
+                  <div v-if="u.id !== profileData?.user?.id" class="role-selector-wrap">
+                    <select
+                      :value="u.role?.id"
+                      @change="onRoleChange(u, $event.target.value)"
+                      class="role-select"
+                      :class="u.role?.nom === 'admin' ? 'role-select-admin' : 'role-select-buyer'"
+                      :disabled="updatingRoleId === u.id"
+                      title="Modifier le rôle et permissions de cet utilisateur"
+                    >
+                      <option v-for="r in availableRoles" :key="r.id" :value="r.id">
+                        {{ r.nom === 'admin' ? '👑' : '💼' }} {{ r.label }} ({{ r.point }} pts)
+                      </option>
+                    </select>
+                    <span v-if="updatingRoleId === u.id" class="role-updating-spinner">
+                      <RefreshCw :size="12" class="spin-icon text-primary" />
+                    </span>
+                  </div>
+                  <span v-else class="badge badge-primary" title="Votre propre compte">
+                    👑 {{ u.role?.label }} ({{ u.role?.point || 0 }} pts)
                   </span>
                 </td>
                 <td>
@@ -205,8 +222,10 @@ const profileData = ref(null)
 
 // Admin team management state
 const usersList = ref([])
+const availableRoles = ref([])
 const loadingUsers = ref(false)
 const togglingId = ref(null)
+const updatingRoleId = ref(null)
 const adminActionMessage = ref('')
 
 const userInitials = computed(() => {
@@ -226,6 +245,15 @@ async function loadProfileData() {
   }
 }
 
+async function loadRoles() {
+  try {
+    const res = await apiClient.get('/auth/roles/')
+    availableRoles.value = res.data.results || res.data || []
+  } catch (err) {
+    console.error('Erreur chargement rôles:', err)
+  }
+}
+
 async function loadUsers() {
   if (!isSuperAdmin.value) return
   loadingUsers.value = true
@@ -236,6 +264,38 @@ async function loadUsers() {
     console.error('Erreur chargement utilisateurs:', err)
   } finally {
     loadingUsers.value = false
+  }
+}
+
+async function onRoleChange(userItem, newRoleId) {
+  if (!newRoleId || Number(newRoleId) === userItem.role?.id) return
+  const roleObj = availableRoles.value.find(r => String(r.id) === String(newRoleId))
+  const roleLabel = roleObj ? `${roleObj.label} (${roleObj.point} pts)` : 'ce rôle'
+  
+  const confirmMsg = `Confirmez-vous le passage de ${userItem.prenom} ${userItem.nom} au rôle "${roleLabel}" ?`
+  if (!confirm(confirmMsg)) {
+    // Force re-render with unchanged role
+    const current = userItem.role
+    userItem.role = null
+    setTimeout(() => { userItem.role = current }, 10)
+    return
+  }
+
+  updatingRoleId.value = userItem.id
+  adminActionMessage.value = ''
+  try {
+    const res = await apiClient.post(`/auth/users/${userItem.id}/change-role/`, {
+      role_id: Number(newRoleId)
+    })
+    userItem.role = res.data.user.role
+    adminActionMessage.value = res.data.message || `Rôle mis à jour avec succès.`
+    setTimeout(() => {
+      adminActionMessage.value = ''
+    }, 4500)
+  } catch (err) {
+    alert(err.response?.data?.error || "Erreur lors du changement de rôle.")
+  } finally {
+    updatingRoleId.value = null
   }
 }
 
@@ -273,6 +333,7 @@ function formatDate(dateStr) {
 onMounted(async () => {
   await loadProfileData()
   if (isSuperAdmin.value) {
+    loadRoles()
     loadUsers()
   }
 })
@@ -517,5 +578,51 @@ onMounted(async () => {
 
 .font-italic {
   font-style: italic;
+}
+
+.role-selector-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.role-select {
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.775rem;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.role-select-admin {
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.5);
+  color: #00d2ff;
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.15);
+}
+
+.role-select-buyer {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.12);
+}
+
+.role-select:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+}
+
+.role-select option {
+  background: #0d1629;
+  color: #f8fafc;
+  padding: 0.5rem;
+}
+
+.role-updating-spinner {
+  display: inline-flex;
+  align-items: center;
 }
 </style>
