@@ -5,17 +5,27 @@
     </div>
 
     <div class="navbar-right">
-      <!-- Seller Points Pill -->
-      <div class="points-badge" title="Solde de points commission">
-        <Award :size="16" class="points-icon" />
+      <!-- Role & Permissions Points Badge -->
+      <div
+        class="points-badge"
+        :class="{ 'badge-admin': isSuperAdmin, 'badge-media-buyer': !isSuperAdmin }"
+        :title="isSuperAdmin ? 'Permission : Niveau 50 (Admin - Saisie & Gestion totale)' : 'Permission : Niveau 10 (Media Buyer - Consultation & Ventes associées)'"
+      >
+        <ShieldCheck v-if="isSuperAdmin" :size="16" class="points-icon" />
+        <Award v-else :size="16" class="points-icon" />
         <span class="points-count">{{ user?.role?.point || 0 }} pts</span>
+        <span class="points-label">{{ isSuperAdmin ? 'Admin' : 'Media Buyer' }}</span>
       </div>
 
-      <!-- Quick Action: New Sale -->
-      <router-link to="/ventes?action=nouvelle" class="btn btn-primary btn-sm">
+      <!-- Quick Action: New Sale (Reserved for Admin) -->
+      <router-link v-if="isSuperAdmin" to="/ventes?action=nouvelle" class="btn btn-primary btn-sm">
         <Plus :size="16" />
         <span>Nouvelle Vente</span>
       </router-link>
+      <div v-else class="sales-restricted-badge" title="Seul l'administrateur peut enregistrer de nouvelles ventes">
+        <Lock :size="13" class="text-primary" />
+        <span>Saisie ventes réservée à l'Admin</span>
+      </div>
     </div>
   </header>
 </template>
@@ -23,11 +33,11 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Plus, Award } from '@lucide/vue'
+import { Plus, Award, ShieldCheck, Lock } from '@lucide/vue'
 import { useAuth } from '../composables/useAuth'
 
 const route = useRoute()
-const { user } = useAuth()
+const { user, isSuperAdmin } = useAuth()
 
 const pageTitle = computed(() => {
   switch (route.name) {
@@ -73,18 +83,54 @@ const pageTitle = computed(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--amber-bg);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  color: #fbbf24;
-  padding: 0.4rem 0.85rem;
+  padding: 0.35rem 0.85rem;
   border-radius: 9999px;
   font-size: 0.825rem;
   font-weight: 700;
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.15);
+  transition: all 0.2s ease;
 }
 
-.points-icon {
-  color: #f59e0b;
+.badge-admin {
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  color: #00d2ff;
+  box-shadow: 0 0 15px rgba(0, 210, 255, 0.18);
+}
+
+.badge-admin .points-icon {
+  color: #00d2ff;
+}
+
+.badge-media-buyer {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+
+.badge-media-buyer .points-icon {
+  color: #10b981;
+}
+
+.points-label {
+  font-size: 0.725rem;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-left: 0.25rem;
+  border-left: 1px solid currentColor;
+}
+
+.sales-restricted-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: rgba(13, 22, 41, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  font-size: 0.775rem;
+  color: var(--text-muted);
 }
 
 .btn-sm {

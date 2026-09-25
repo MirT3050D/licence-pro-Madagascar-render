@@ -59,6 +59,7 @@ class VenteSerializer(serializers.ModelSerializer):
 
 class VenteCreateSerializer(serializers.Serializer):
     client_id = serializers.IntegerField()
+    user_affilie_id = serializers.IntegerField(required=False, allow_null=True)
     methode_paiement_id = serializers.IntegerField()
     articles = CommandeItemInputSerializer(many=True)
 
@@ -78,7 +79,13 @@ class VenteCreateSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
-        user = self.context['request'].user
+        request_user = self.context['request'].user
+        user_affilie_id = validated_data.get('user_affilie_id')
+        if user_affilie_id:
+            user_affilie = Utilisateur.objects.filter(id=user_affilie_id).first() or request_user
+        else:
+            user_affilie = request_user
+
         client = Client.objects.get(id=validated_data['client_id'])
         methode = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
         articles_data = validated_data['articles']
@@ -86,7 +93,7 @@ class VenteCreateSerializer(serializers.Serializer):
         with transaction.atomic():
             vente = Vente.objects.create(
                 client=client,
-                user_affilie=user,
+                user_affilie=user_affilie,
                 methode_paiement=methode
             )
 

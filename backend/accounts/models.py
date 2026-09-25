@@ -48,7 +48,7 @@ class UtilisateurManager(BaseUserManager):
             Role = self.model._meta.get_field('role').remote_field.model
             role_admin, _ = Role.objects.get_or_create(
                 nom='admin',
-                defaults={'label': 'Administrateur', 'point': 100}
+                defaults={'label': 'Administrateur', 'point': 50}
             )
             extra_fields['role'] = role_admin
 

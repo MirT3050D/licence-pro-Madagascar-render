@@ -6,7 +6,20 @@ const token = ref(localStorage.getItem('access_token') || null)
 
 export function useAuth() {
   const isAuthenticated = computed(() => !!token.value)
-  const isSuperAdmin = computed(() => user.value?.role?.nom === 'admin')
+  const isSuperAdmin = computed(() => {
+    if (!user.value) return false
+    return (
+      user.value.is_superuser ||
+      user.value.is_staff ||
+      (user.value.role && user.value.role.point >= 50) ||
+      user.value.role?.nom === 'admin'
+    )
+  })
+  const isMediaBuyer = computed(() => {
+    if (!user.value) return false
+    return (user.value.role && user.value.role.point === 10) || user.value.role?.nom === 'media_buyer'
+  })
+  const userPermissionPoints = computed(() => user.value?.role?.point || 0)
 
   async function login(email, password) {
     const res = await apiClient.post('/auth/login/', { email, password })
@@ -57,6 +70,8 @@ export function useAuth() {
     token,
     isAuthenticated,
     isSuperAdmin,
+    isMediaBuyer,
+    userPermissionPoints,
     login,
     register,
     logout,

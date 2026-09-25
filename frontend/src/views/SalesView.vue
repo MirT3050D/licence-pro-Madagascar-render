@@ -1,26 +1,166 @@
 <template>
   <div class="sales-view">
-    <!-- Filters & Action Header -->
-    <div class="view-header">
-      <div class="filters-row">
-        <!-- Date filters -->
-        <input v-model="filters.date_debut" @change="fetchSales" type="date" class="form-input filter-input" title="Date de début" />
-        <input v-model="filters.date_fin" @change="fetchSales" type="date" class="form-input filter-input" title="Date de fin" />
+    <!-- FILTRES AVANCÉS & ACTION NOUVELLE VENTE -->
+    <div class="sales-filter-card card">
+      <!-- 1. FILTRE PRIMORDIAL : VENDEUR / USER-AFFILIÉ -->
+      <div class="primary-vendor-filter">
+        <div class="filter-header-label">
+          <div class="label-with-icon">
+            <Users :size="16" class="text-primary" />
+            <span class="label-title">FILTRER PAR VENDEUR / AFFILIÉ</span>
+          </div>
+          <span class="badge badge-primary">Filtre Prioritaire</span>
+        </div>
 
-        <!-- Payment method filter -->
+        <div class="vendor-controls">
+          <div class="vendor-select-wrapper">
+            <select v-model="filters.vendeur" @change="fetchSales" class="form-select vendor-select">
+              <option value="">👥 Tous les vendeurs / affiliés</option>
+              <option v-for="u in vendorsList" :key="u.id" :value="u.id">
+                👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Vendeur' }})
+              </option>
+            </select>
+          </div>
+
+          <button
+            v-if="user?.id"
+            type="button"
+            @click="toggleMySales"
+            class="btn btn-sm"
+            :class="filters.vendeur === user.id ? 'btn-primary' : 'btn-secondary'"
+            title="Afficher uniquement les ventes que j'ai enregistrées"
+          >
+            <Zap :size="14" />
+            <span>Mes Ventes</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. FILTRES COMPLÉMENTAIRES : RECHERCHE, PÉRIODE, MODE DE PAIEMENT, NOUVELLE VENTE -->
+      <div class="secondary-filters-row">
+        <!-- Recherche textuelle -->
+        <div class="search-box">
+          <Search :size="16" class="search-icon" />
+          <input
+            v-model="filters.search"
+            @input="onSearchInput"
+            type="text"
+            class="form-input search-input"
+            placeholder="Rechercher client, réf #, téléphone..."
+          />
+          <button v-if="filters.search" @click="clearSearch" class="btn-clear-search">
+            <X :size="14" />
+          </button>
+        </div>
+
+        <!-- Périodes rapides -->
+        <div class="period-presets">
+          <button
+            type="button"
+            class="preset-btn"
+            :class="{ active: activePeriodPreset === 'all' }"
+            @click="setPeriodPreset('all')"
+          >
+            Tout
+          </button>
+          <button
+            type="button"
+            class="preset-btn"
+            :class="{ active: activePeriodPreset === 'today' }"
+            @click="setPeriodPreset('today')"
+          >
+            Aujourd'hui
+          </button>
+          <button
+            type="button"
+            class="preset-btn"
+            :class="{ active: activePeriodPreset === '7d' }"
+            @click="setPeriodPreset('7d')"
+          >
+            7 jours
+          </button>
+          <button
+            type="button"
+            class="preset-btn"
+            :class="{ active: activePeriodPreset === 'month' }"
+            @click="setPeriodPreset('month')"
+          >
+            Ce mois
+          </button>
+        </div>
+
+        <!-- Dates personnalisées -->
+        <div class="date-range-inputs">
+          <input
+            v-model="filters.date_debut"
+            @change="onCustomDateChange"
+            type="date"
+            class="form-input date-input"
+            title="Date de début"
+          />
+          <span class="date-sep">à</span>
+          <input
+            v-model="filters.date_fin"
+            @change="onCustomDateChange"
+            type="date"
+            class="form-input date-input"
+            title="Date de fin"
+          />
+        </div>
+
+        <!-- Mode de paiement -->
         <select v-model="filters.methode_paiement" @change="fetchSales" class="form-select filter-select">
           <option value="">Tous les règlements</option>
           <option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.label }}</option>
         </select>
+
+        <!-- Bouton Réinitialiser -->
+        <button
+          v-if="hasActiveFilters"
+          type="button"
+          @click="resetFilters"
+          class="btn btn-secondary btn-sm"
+          title="Réinitialiser tous les filtres"
+        >
+          <RotateCcw :size="14" />
+          <span>Réinitialiser</span>
+        </button>
+
+        <!-- Nouvelle Vente (Réservé Administrateur) -->
+        <button v-if="isSuperAdmin" @click="openCreateSaleModal" class="btn btn-primary btn-new-sale">
+          <Plus :size="18" />
+          <span>Nouvelle Vente</span>
+        </button>
+        <div v-else class="admin-only-badge">
+          <Lock :size="13" class="text-primary" />
+          <span>Saisie réservée à l'Admin</span>
+        </div>
       </div>
 
-      <button @click="openCreateSaleModal" class="btn btn-primary">
-        <Plus :size="18" />
-        <span>Nouvelle Vente</span>
-      </button>
+      <!-- 3. BANDEAU RÉSUMÉ DES RÉSULTATS FILTRÉS -->
+      <div class="filter-results-summary">
+        <div class="summary-left">
+          <span class="results-count">
+            <strong>{{ sales.length }}</strong> vente(s) affichée(s)
+          </span>
+          <span v-if="activeFilterVendorName" class="active-filter-pill">
+            Vendeur : <strong>{{ activeFilterVendorName }}</strong>
+          </span>
+          <span v-if="filters.search" class="active-filter-pill">
+            Recherche : <strong>"{{ filters.search }}"</strong>
+          </span>
+          <span v-if="activePeriodPreset !== 'all'" class="active-filter-pill">
+            Période : <strong>{{ activePeriodLabel }}</strong>
+          </span>
+        </div>
+        <div class="summary-right">
+          <span class="total-label">Total encaissé :</span>
+          <span class="total-val text-emerald">{{ formatPrice(filteredSalesTotal) }}</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Sales Table -->
+    <!-- Tableau des Ventes -->
     <div class="card p-0">
       <div class="table-container">
         <table class="data-table">
@@ -29,7 +169,7 @@
               <th># Réf</th>
               <th>Date & Heure</th>
               <th>Client</th>
-              <th>Vendeur</th>
+              <th>Vendeur / Affilié</th>
               <th>Règlement</th>
               <th>Articles</th>
               <th>Total</th>
@@ -49,7 +189,10 @@
                 <div class="text-xs text-muted">{{ vente.client?.numero || 'Sans numéro' }}</div>
               </td>
               <td>
-                <span class="text-sm">{{ vente.user_affilie?.prenom }} {{ vente.user_affilie?.nom }}</span>
+                <div class="vendor-cell">
+                  <span class="vendor-name">{{ vente.user_affilie?.prenom }} {{ vente.user_affilie?.nom }}</span>
+                  <span class="vendor-role-tag">{{ vente.user_affilie?.role?.label || 'Vendeur' }}</span>
+                </div>
               </td>
               <td>
                 <span class="badge badge-primary">{{ vente.methode_paiement?.label }}</span>
@@ -66,7 +209,7 @@
                     <FileText :size="14" />
                     <span>Détails & Guides</span>
                   </button>
-                  <button @click="deleteSale(vente)" class="btn-icon btn-danger-icon" title="Supprimer la vente">
+                  <button v-if="isSuperAdmin" @click="deleteSale(vente)" class="btn-icon btn-danger-icon" title="Supprimer la vente">
                     <Trash2 :size="14" />
                   </button>
                 </div>
@@ -106,30 +249,41 @@
               </select>
             </div>
 
+            <!-- Media Buyer attribution -->
+            <div class="form-group flex-1">
+              <label class="form-label">Media Buyer / Vendeur crédité *</label>
+              <select v-model="form.user_affilie_id" class="form-select">
+                <option :value="user?.id">👑 Moi-même ({{ user?.prenom }} {{ user?.nom }})</option>
+                <option v-for="u in vendorsList" :key="u.id" :value="u.id">
+                  👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Media Buyer' }})
+                </option>
+              </select>
+            </div>
+
             <!-- Payment method -->
             <div class="form-group flex-1">
-              <label class="form-label">Mode de règlement *</label>
+              <label class="form-label">Méthode de Paiement *</label>
               <select v-model="form.methode_paiement_id" required class="form-select">
-                <option value="" disabled>-- Méthode de paiement --</option>
+                <option value="" disabled>-- Choisir le mode de paiement --</option>
                 <option v-for="m in paymentMethods" :key="m.id" :value="m.id">
-                  {{ m.label }} {{ m.details ? `(${m.details})` : '' }}
+                  {{ m.label }} <span v-if="m.details">({{ m.details }})</span>
                 </option>
               </select>
             </div>
           </div>
 
-          <!-- Product lines section -->
-          <div class="articles-section">
-            <div class="articles-header">
-              <h4>Articles commandés</h4>
+          <!-- Product Lines Section -->
+          <div class="order-items-box">
+            <div class="order-items-header">
+              <span class="text-sm font-bold">Produits & Licences inclus dans la vente</span>
               <button @click="addArticleLine" type="button" class="btn btn-secondary btn-xs">
                 <Plus :size="14" />
-                <span>Ajouter une ligne</span>
+                <span>Ajouter un produit</span>
               </button>
             </div>
 
-            <div class="articles-table">
-              <div v-for="(line, idx) in form.articles" :key="idx" class="article-line">
+            <div class="articles-lines-list">
+              <div v-for="(line, idx) in form.articles" :key="idx" class="article-line-row">
                 <!-- Product selector -->
                 <div class="flex-2">
                   <label class="form-label text-xs">Produit *</label>
@@ -139,9 +293,9 @@
                     required
                     class="form-select"
                   >
-                    <option value="" disabled>Choisir un produit...</option>
+                    <option value="" disabled>-- Sélectionner le produit --</option>
                     <option v-for="p in productsList" :key="p.id" :value="p.id">
-                      {{ p.nom }} (Actuel: {{ formatPrice(p.prix_actif) }})
+                      {{ p.nom }} (Prix: {{ formatPrice(p.prix_vente) }})
                     </option>
                   </select>
                 </div>
@@ -248,43 +402,31 @@
 
           <!-- Items Ordered Table -->
           <div class="section-title">Articles de la commande</div>
-          <div class="table-container mb-4">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Produit</th>
-                  <th>Qté</th>
-                  <th>Prix Unitaire</th>
-                  <th style="text-align: right;">Sous-total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="cmd in selectedSale.commandes" :key="cmd.id">
-                  <td class="font-bold">{{ cmd.produit_nom }}</td>
-                  <td>{{ cmd.quantite }}</td>
-                  <td>{{ formatPrice(cmd.prix_unitaire) }}</td>
-                  <td style="text-align: right;" class="font-bold text-emerald">{{ formatPrice(cmd.sous_total) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Activation Guides to copy -->
-          <div class="section-title">Guides d'activation pour le client</div>
-          <div v-if="selectedSale.guides_activation?.length" class="guides-list">
-            <div v-for="(g, i) in selectedSale.guides_activation" :key="i" class="guide-box">
-              <div class="guide-header">
-                <strong>{{ g.produit_nom }}</strong>
-                <button @click="copyText(g.guide)" class="btn btn-secondary btn-xs">
-                  <Copy :size="14" />
-                  <span>Copier le texte</span>
-                </button>
+          <div class="detail-items-table">
+            <div v-for="cmd in selectedSale.commandes" :key="cmd.id" class="detail-item-row">
+              <div class="item-name-col">
+                <strong>{{ cmd.produit?.nom }}</strong>
+                <p class="text-xs text-muted">{{ cmd.produit?.description }}</p>
               </div>
-              <pre class="guide-content">{{ g.guide }}</pre>
+              <div class="item-calc-col">
+                <span>{{ cmd.quantite }} x {{ formatPrice(cmd.prix_unitaire) }}</span>
+                <strong class="text-emerald">{{ formatPrice(cmd.quantite * cmd.prix_unitaire) }}</strong>
+              </div>
+
+              <!-- Activation Guides & Copy Buttons -->
+              <div v-if="cmd.produit?.activations?.length" class="activation-guides-box">
+                <div v-for="act in cmd.produit.activations" :key="act.id" class="act-guide-item">
+                  <div class="guide-header">
+                    <span class="guide-badge">Guide d'activation</span>
+                    <button @click="copyText(act.guide)" class="btn btn-xs btn-secondary" title="Copier le guide client">
+                      <Copy :size="12" />
+                      <span>Copier le guide</span>
+                    </button>
+                  </div>
+                  <pre class="guide-pre">{{ act.guide }}</pre>
+                </div>
+              </div>
             </div>
-          </div>
-          <div v-else class="text-muted text-sm italic py-2">
-            Aucun guide d'activation configuré pour ces licences.
           </div>
         </div>
       </div>
@@ -302,25 +444,37 @@ import {
   Trash2,
   X,
   Check,
-  Copy
+  Copy,
+  Users,
+  Zap,
+  RotateCcw,
+  Lock
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'
+import { useAuth } from '../composables/useAuth'
 
 const route = useRoute()
+const { user, isSuperAdmin } = useAuth()
 
 const sales = ref([])
 const clientsList = ref([])
 const productsList = ref([])
 const paymentMethods = ref([])
+const vendorsList = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 
 const filters = ref({
+  vendeur: '',
+  search: '',
   date_debut: '',
   date_fin: '',
   methode_paiement: '',
 })
+
+const activePeriodPreset = ref('all')
+let searchTimeout = null
 
 // Modals
 const showCreateModal = ref(false)
@@ -329,6 +483,7 @@ const selectedSale = ref(null)
 
 const form = ref({
   client_id: '',
+  user_affilie_id: '',
   methode_paiement_id: '',
   articles: [
     { produit_id: '', quantite: 1, prix_unitaire: 0 }
@@ -341,10 +496,47 @@ const computedTotal = computed(() => {
   }, 0)
 })
 
+const hasActiveFilters = computed(() => {
+  return !!(
+    filters.value.vendeur ||
+    filters.value.search ||
+    filters.value.date_debut ||
+    filters.value.date_fin ||
+    filters.value.methode_paiement ||
+    activePeriodPreset.value !== 'all'
+  )
+})
+
+const activeFilterVendorName = computed(() => {
+  if (!filters.value.vendeur) return ''
+  const v = vendorsList.value.find(u => String(u.id) === String(filters.value.vendeur))
+  return v ? `${v.prenom} ${v.nom}` : ''
+})
+
+const activePeriodLabel = computed(() => {
+  switch (activePeriodPreset.value) {
+    case 'today': return "Aujourd'hui"
+    case '7d': return "7 derniers jours"
+    case 'month': return "Ce mois-ci"
+    default: return ""
+  }
+})
+
+const filteredSalesTotal = computed(() => {
+  return sales.value.reduce((acc, v) => acc + (v.total || 0), 0)
+})
+
 async function fetchSales() {
   loading.value = true
   try {
-    const res = await apiClient.get('/ventes/', { params: filters.value })
+    const params = {}
+    if (filters.value.vendeur) params.vendeur = filters.value.vendeur
+    if (filters.value.search) params.search = filters.value.search.trim()
+    if (filters.value.date_debut) params.date_debut = filters.value.date_debut
+    if (filters.value.date_fin) params.date_fin = filters.value.date_fin
+    if (filters.value.methode_paiement) params.methode_paiement = filters.value.methode_paiement
+
+    const res = await apiClient.get('/ventes/', { params })
     sales.value = res.data
   } catch (err) {
     console.error('Erreur chargement ventes:', err)
@@ -355,21 +547,89 @@ async function fetchSales() {
 
 async function fetchFormDependencies() {
   try {
-    const [cRes, pRes, mRes] = await Promise.all([
+    const [cRes, pRes, mRes, uRes] = await Promise.all([
       apiClient.get('/clients/'),
       apiClient.get('/produits/'),
       apiClient.get('/ventes/methodes-paiement/'),
+      apiClient.get('/auth/users/').catch(() => ({ data: [] }))
     ])
     clientsList.value = cRes.data
     productsList.value = pRes.data
     paymentMethods.value = mRes.data
+    vendorsList.value = uRes.data.results || uRes.data || []
   } catch (err) {
     console.error('Erreur dépendances vente:', err)
   }
 }
 
+function toggleMySales() {
+  if (!user.value?.id) return
+  if (String(filters.value.vendeur) === String(user.value.id)) {
+    filters.value.vendeur = ''
+  } else {
+    filters.value.vendeur = user.value.id
+  }
+  fetchSales()
+}
+
+function onSearchInput() {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => {
+    fetchSales()
+  }, 350)
+}
+
+function clearSearch() {
+  filters.value.search = ''
+  fetchSales()
+}
+
+function setPeriodPreset(preset) {
+  activePeriodPreset.value = preset
+  const now = new Date()
+
+  if (preset === 'today') {
+    const ymd = now.toISOString().split('T')[0]
+    filters.value.date_debut = ymd
+    filters.value.date_fin = ymd
+  } else if (preset === '7d') {
+    const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    filters.value.date_debut = past.toISOString().split('T')[0]
+    filters.value.date_fin = now.toISOString().split('T')[0]
+  } else if (preset === 'month') {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+    filters.value.date_debut = firstDay.toISOString().split('T')[0]
+    filters.value.date_fin = now.toISOString().split('T')[0]
+  } else {
+    // all
+    filters.value.date_debut = ''
+    filters.value.date_fin = ''
+  }
+  fetchSales()
+}
+
+function onCustomDateChange() {
+  activePeriodPreset.value = 'custom'
+  fetchSales()
+}
+
+function resetFilters() {
+  filters.value = {
+    vendeur: '',
+    search: '',
+    date_debut: '',
+    date_fin: '',
+    methode_paiement: '',
+  }
+  activePeriodPreset.value = 'all'
+  fetchSales()
+}
+
 function openCreateSaleModal() {
-  // Vérifier si des données de pré-remplissage IA sont présentes dans sessionStorage
+  if (!isSuperAdmin.value) {
+    alert("Permission refusée. Seul un administrateur (niveau 50) peut enregistrer de nouvelles ventes.")
+    return
+  }
   const prefill = sessionStorage.getItem('prefill_sale')
   if (prefill) {
     try {
@@ -399,8 +659,11 @@ function openCreateSaleModal() {
 function resetForm() {
   form.value = {
     client_id: clientsList.value[0]?.id || '',
+    user_affilie_id: user.value?.id || '',
     methode_paiement_id: paymentMethods.value[0]?.id || '',
-    articles: [{ produit_id: '', quantite: 1, prix_unitaire: 0 }]
+    articles: [
+      { produit_id: '', quantite: 1, prix_unitaire: 0 }
+    ]
   }
 }
 
@@ -413,9 +676,9 @@ function removeArticleLine(idx) {
 }
 
 function onProductSelect(line) {
-  const prod = productsList.value.find(p => p.id === line.produit_id)
-  if (prod && prod.prix_actif) {
-    line.prix_unitaire = Number(prod.prix_actif)
+  const p = productsList.value.find(item => item.id === line.produit_id)
+  if (p) {
+    line.prix_unitaire = Number(p.prix_vente)
   }
 }
 
@@ -426,7 +689,6 @@ async function submitCreateSale() {
     showCreateModal.value = false
     await fetchSales()
 
-    // Confetti effect on sale validation!
     confetti({
       particleCount: 100,
       spread: 70,
@@ -473,14 +735,17 @@ function formatDateTime(dateStr) {
   })
 }
 
-// Watch route for action=nouvelle parameter
-watch(() => route.query.action, (act) => {
-  if (act === 'nouvelle') {
-    openCreateSaleModal()
+watch(() => route.query.vendeur, (vId) => {
+  if (vId) {
+    filters.value.vendeur = vId
+    fetchSales()
   }
 })
 
 onMounted(async () => {
+  if (route.query.vendeur) {
+    filters.value.vendeur = route.query.vendeur
+  }
   await fetchFormDependencies()
   await fetchSales()
   if (route.query.action === 'nouvelle') {
@@ -496,113 +761,339 @@ onMounted(async () => {
   gap: 1.5rem;
 }
 
-.view-header {
+/* FILTERS CARD */
+.sales-filter-card {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  background: var(--gradient-card);
+  border: 1px solid var(--border-card);
+}
+
+/* 1. PRIMARY VENDOR FILTER HIGHLIGHT */
+.primary-vendor-filter {
+  background: rgba(0, 210, 255, 0.08);
+  border: 1.5px solid rgba(0, 210, 255, 0.4);
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 1.25rem;
+  flex-wrap: wrap;
 }
 
-.filters-row {
+.filter-header-label {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
-.filter-input {
-  width: 160px;
-}
-
-.filter-select {
-  width: 200px;
-}
-
-.actions-group {
+.label-with-icon {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.5rem;
 }
 
-/* Modals */
+.label-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+  text-transform: uppercase;
+}
+
+.vendor-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  max-width: 500px;
+}
+
+.vendor-select-wrapper {
+  flex: 1;
+}
+
+.vendor-select {
+  width: 100%;
+  font-weight: 600;
+  border-color: rgba(0, 210, 255, 0.5);
+  background-color: rgba(6, 13, 25, 0.85);
+}
+
+/* 2. SECONDARY FILTERS */
+.secondary-filters-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 220px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding-left: 2.5rem;
+  padding-right: 2rem;
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 0.65rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.btn-clear-search:hover {
+  color: var(--text-main);
+}
+
+.period-presets {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem;
+  gap: 0.2rem;
+}
+
+.preset-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.preset-btn.active {
+  background: var(--primary);
+  color: #060d19;
+  font-weight: 700;
+}
+
+.date-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.date-input {
+  width: 135px;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.date-sep {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.filter-select {
+  width: 180px;
+}
+
+.btn-new-sale {
+  margin-left: auto;
+}
+
+.admin-only-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+/* 3. SUMMARY BANNER */
+.filter-results-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.summary-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.results-count strong {
+  color: var(--primary);
+}
+
+.active-filter-pill {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.active-filter-pill strong {
+  color: var(--text-main);
+}
+
+.summary-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.total-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.total-val {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+/* VENDOR CELL IN TABLE */
+.vendor-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.vendor-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.vendor-role-tag {
+  font-size: 0.7rem;
+  color: var(--primary);
+}
+
+.actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* MODAL STYLES */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(6px);
-  z-index: 100;
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 100;
   padding: 1.5rem;
 }
 
 .modal-card {
   width: 100%;
-  border-radius: var(--radius-xl);
-  padding: 1.75rem;
   max-height: 90vh;
   overflow-y: auto;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-card);
+  padding: 2rem;
 }
 
-.modal-xl {
-  max-width: 850px;
-}
-
-.modal-lg {
-  max-width: 700px;
-}
+.modal-lg { max-width: 680px; }
+.modal-xl { max-width: 880px; }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 1.5rem;
 }
+
+.btn-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.btn-close:hover { color: var(--text-main); }
 
 .sale-top-fields {
   display: flex;
   gap: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 .flex-1 { flex: 1; }
 .flex-2 { flex: 2; }
 
-.articles-section {
+.order-items-box {
   background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-card);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 1.25rem;
-  margin: 1.25rem 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
-.articles-header {
+.order-items-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 1rem;
 }
 
-.articles-table {
+.articles-lines-list {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.article-line {
+.article-line-row {
   display: flex;
   align-items: flex-end;
-  gap: 0.85rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .line-subtotal {
   display: flex;
   flex-direction: column;
-  min-width: 120px;
+  min-width: 100px;
   text-align: right;
   padding-bottom: 0.4rem;
 }
@@ -611,27 +1102,20 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 1.5rem;
-  padding-top: 1rem;
+  padding-top: 1.25rem;
   border-top: 1px solid var(--border-subtle);
 }
 
 .total-box {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.75rem;
-}
-
-.total-label {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-secondary);
 }
 
 .total-amount {
   font-size: 1.6rem;
   font-weight: 800;
-  color: #34d399;
+  color: var(--emerald);
 }
 
 .modal-actions {
@@ -641,75 +1125,63 @@ onMounted(async () => {
 
 .sale-meta-card {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-card);
+  padding: 1.25rem;
   border-radius: var(--radius-md);
-  padding: 1rem;
+  border: 1px solid var(--border-subtle);
   margin-bottom: 1.5rem;
 }
 
 .section-title {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 700;
+  text-transform: uppercase;
   color: var(--text-secondary);
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.85rem;
 }
 
-.guides-list {
+.detail-items-table {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.guide-box {
+.detail-item-row {
   background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-card);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 1rem;
+}
+
+.act-guide-item {
+  margin-top: 0.75rem;
+  background: rgba(0, 210, 255, 0.05);
+  border: 1px solid rgba(0, 210, 255, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
 }
 
 .guide-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.5rem;
 }
 
-.guide-content {
-  background: rgba(0, 0, 0, 0.35);
-  padding: 0.85rem;
-  border-radius: var(--radius-sm);
+.guide-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.guide-pre {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
-  white-space: pre-wrap;
-  color: #cbd5e1;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.btn-xs {
-  padding: 0.35rem 0.65rem;
   font-size: 0.75rem;
-}
-
-.btn-danger-icon {
-  background: rgba(244, 63, 94, 0.1);
-  border: 1px solid rgba(244, 63, 94, 0.2);
-  color: var(--rose);
-  padding: 0.4rem;
-}
-
-.btn-danger-icon:hover {
-  background: var(--rose);
-  color: white;
-}
-
-.btn-close {
-  background: none;
-  border: none;
+  white-space: pre-wrap;
   color: var(--text-secondary);
-  cursor: pointer;
+  line-height: 1.4;
 }
 </style>

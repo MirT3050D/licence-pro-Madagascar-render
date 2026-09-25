@@ -103,15 +103,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         if not has_active_admin:
             role_obj, _ = Role.objects.get_or_create(
                 nom='admin',
-                defaults={'label': 'Administrateur', 'point': 100}
+                defaults={'label': 'Administrateur', 'point': 50}
             )
             is_staff = True
             is_superuser = True
             is_active = True
         else:
             role_obj, _ = Role.objects.get_or_create(
-                nom='vendeur',
-                defaults={'label': 'Affilié / Vendeur', 'point': 10}
+                nom='media_buyer',
+                defaults={'label': 'Media Buyer', 'point': 10}
             )
             is_staff = False
             is_superuser = False

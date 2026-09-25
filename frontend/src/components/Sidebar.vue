@@ -41,7 +41,7 @@
 
       <router-link to="/profil" class="nav-item" :class="{ active: $route.path.startsWith('/profil') }">
         <User :size="20" />
-        <span>Mon Profil & Points</span>
+        <span>Mon Profil & Permissions</span>
       </router-link>
     </nav>
 
@@ -53,7 +53,7 @@
         </div>
         <div class="user-details">
           <div class="user-name">{{ user?.prenom }} {{ user?.nom }}</div>
-          <div class="user-role">{{ user?.role?.label || 'Utilisateur' }}</div>
+          <div class="user-role">{{ user?.role?.label || 'Utilisateur' }} ({{ user?.role?.point || 0 }} pts)</div>
         </div>
       </div>
 

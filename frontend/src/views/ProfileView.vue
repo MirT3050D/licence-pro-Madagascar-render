@@ -33,25 +33,30 @@
           </div>
         </div>
 
-        <!-- Commission & Points Balance Card -->
+        <!-- Points d'habilitation & Permissions Card -->
         <div class="card balance-card">
           <div class="balance-header">
-            <span class="text-sm text-muted">SOLDE DE POINTS & COMMISSIONS</span>
+            <span class="text-sm text-muted">HABILITATION & PERMISSIONS</span>
             <Award :size="24" class="text-amber" />
           </div>
 
           <div class="points-hero">
-            <span class="points-number">{{ profileData?.statistiques?.points || 0 }}</span>
-            <span class="points-unit">Points</span>
+            <span class="points-number">{{ profileData?.user?.role?.point || 0 }}</span>
+            <span class="points-unit">Points d'accès</span>
           </div>
 
           <p class="balance-desc">
-            Vos points sont indexés sur votre statut de vendeur ({{ profileData?.user?.role?.nom }}). Chaque vente contribue à votre solde de commissions.
+            <span v-if="profileData?.user?.role?.point >= 50" class="text-primary font-bold">
+              👑 Niveau 50 (Administrateur) : Gestion totale, validation des comptes et enregistrement exclusif des ventes.
+            </span>
+            <span v-else class="text-secondary">
+              💼 Niveau 10 (Media Buyer) : Consultation de son tableau de bord et suivi de ses ventes associées.
+            </span>
           </p>
 
           <div class="stats-pills">
             <div class="stat-pill">
-              <span class="pill-label">Mes Ventes</span>
+              <span class="pill-label">Ventes Associées</span>
               <span class="pill-val">{{ profileData?.statistiques?.total_ventes || 0 }}</span>
             </div>
             <div class="stat-pill">
@@ -103,7 +108,7 @@
                 </td>
                 <td>
                   <span class="badge" :class="u.role?.nom === 'admin' ? 'badge-primary' : 'badge-neutral'">
-                    {{ u.role?.label || 'Vendeur' }}
+                    {{ u.role?.label || 'Vendeur' }} ({{ u.role?.point || 0 }} pts)
                   </span>
                 </td>
                 <td>

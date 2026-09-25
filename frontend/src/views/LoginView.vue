@@ -348,19 +348,20 @@ async function handleRegister() {
       }, 800)
     }
   } catch (err) {
+    const status = err.response?.status
     const errData = err.response?.data
-    if (errData) {
-      if (errData.email) {
-        errorMessage.value = Array.isArray(errData.email) ? errData.email[0] : errData.email
-      } else if (errData.password_confirm) {
-        errorMessage.value = Array.isArray(errData.password_confirm) ? errData.password_confirm[0] : errData.password_confirm
-      } else if (errData.detail) {
-        errorMessage.value = Array.isArray(errData.detail) ? errData.detail[0] : errData.detail
+    if (status === 404) {
+      errorMessage.value = "Le serveur d'API distant n'a pas encore cette mise à jour d'inscription."
+    } else if (errData && typeof errData === 'object') {
+      const keys = Object.keys(errData)
+      if (keys.length > 0) {
+        const val = errData[keys[0]]
+        errorMessage.value = Array.isArray(val) ? val[0] : (typeof val === 'string' ? val : JSON.stringify(val))
       } else {
         errorMessage.value = 'Impossible de créer le compte. Vérifiez les informations saisies.'
       }
     } else {
-      errorMessage.value = 'Erreur réseau ou serveur inaccessible. Veuillez réessayer.'
+      errorMessage.value = err.response?.data?.detail || err.message || 'Erreur réseau ou serveur inaccessible. Veuillez réessayer.'
     }
   } finally {
     loading.value = false
