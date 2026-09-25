@@ -360,9 +360,18 @@ async function handleSendMessage() {
       order_intent: res.data.order_intent || null
     })
   } catch (err) {
+    console.error('Erreur Chatbot IA:', err)
+    let errorMsg = "Désolé, une erreur de communication est survenue avec le service IA."
+    if (err.response?.status === 401) {
+      errorMsg = "Votre session a expiré ou vous n'êtes pas authentifié. Veuillez vous reconnecter à votre compte."
+    } else if (err.response?.data?.error) {
+      errorMsg = `Erreur IA : ${err.response.data.error}`
+    } else if (err.response?.data?.detail) {
+      errorMsg = `Erreur : ${err.response.data.detail}`
+    }
     chatMessages.value.push({
       role: 'model',
-      text: "Désolé, une erreur de communication est survenue avec le service IA.",
+      text: errorMsg,
       time: formatTimeNow()
     })
   } finally {

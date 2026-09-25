@@ -15,7 +15,37 @@ def get_vertex_gemini_model(model_name="gemini-2.5-flash"):
     try:
         import vertexai
         from vertexai.generative_models import GenerativeModel
-        vertexai.init(location=os.getenv("VERTEXAI_LOCATION", "us-central1"))
+        from google.oauth2 import service_account
+
+        # 1. Vérifier si la clé de compte de service est injectée en variable d'environnement (ex: Render)
+        sa_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+        if sa_json:
+            try:
+                info = json.loads(sa_json)
+                credentials = service_account.Credentials.from_service_account_info(info)
+                project = info.get("project_id", os.getenv("VERTEXAI_PROJECT", "jhpiego-504511"))
+                vertexai.init(project=project, location=os.getenv("VERTEXAI_LOCATION", "us-central1"), credentials=credentials)
+                return GenerativeModel(model_name)
+            except Exception as e_sa:
+                print(f"[Vertex AI SA Env Warning]: {e_sa}")
+
+        # 2. Vérifier si un fichier local gcp-key.json existe
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        local_key_path = os.path.join(base_dir, "gcp-key.json")
+        if os.path.exists(local_key_path):
+            try:
+                with open(local_key_path, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                credentials = service_account.Credentials.from_service_account_info(info)
+                project = info.get("project_id", "jhpiego-504511")
+                vertexai.init(project=project, location=os.getenv("VERTEXAI_LOCATION", "us-central1"), credentials=credentials)
+                return GenerativeModel(model_name)
+            except Exception as e_file:
+                print(f"[Vertex AI File Warning]: {e_file}")
+
+        # 3. Fallback ADC standard (gcloud local)
+        project = os.getenv("VERTEXAI_PROJECT", "jhpiego-504511")
+        vertexai.init(project=project, location=os.getenv("VERTEXAI_LOCATION", "us-central1"))
         return GenerativeModel(model_name)
     except Exception as e:
         print(f"[Vertex AI Init Warning]: {e}")
