@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
 import LoginView from '../views/LoginView.vue'
@@ -42,8 +42,9 @@ const routes = [
   },
 ]
 
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:'
 const router = createRouter({
-  history: createWebHistory(),
+  history: isFileProtocol ? createWebHashHistory() : createWebHistory(),
   routes,
 })
 

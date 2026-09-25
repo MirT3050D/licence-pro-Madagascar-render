@@ -2,6 +2,8 @@
   "name": "frontend",
   "private": true,
   "version": "1.0.0",
+  "description": "Licence Pro Madagascar - Application Desktop",
+  "author": "MirT3050D",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -9,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:preview": "vite build && electron ."
+    "electron:preview": "vite build && electron .",
+    "electron:build": "vite build && npx @electron/packager . \"Licence Pro Madagascar\" --platform=win32 --arch=x64 --out=dist-app --overwrite --prune=false"
   },
   "dependencies": {
     "@lucide/vue": "^1.48.0",
@@ -22,6 +25,7 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@electron/packager": "^19.0.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "concurrently": "^10.0.5",
     "electron": "^44.4.5",
