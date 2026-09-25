@@ -2,7 +2,7 @@
   <ion-modal :is-open="isOpen" @didDismiss="handleDismiss" :initial-breakpoint="0.95" :breakpoints="[0, 0.95, 1]">
     <ion-header>
       <ion-toolbar class="modal-toolbar">
-        <ion-title>Nouvelle Vente</ion-title>
+        <ion-title>{{ isEditing ? `Modifier la Vente #${saleToEdit?.id}` : 'Nouvelle Vente' }}</ion-title>
         <ion-buttons slot="end">
           <ion-button @click="handleDismiss">
             <ion-icon :icon="closeOutline" />
@@ -17,17 +17,32 @@
         {{ errorMessage }}
       </div>
 
-      <!-- 1. SÉLECTION DU CLIENT -->
+      <!-- 1. DATE & HEURE DE LA VENTE -->
+      <div class="form-section">
+        <div class="section-title">
+          <span>Date & Heure de la vente</span>
+          <button type="button" @click="setDateToNow" class="btn-text-action">
+            Maintenant
+          </button>
+        </div>
+        <input
+          v-model="saleDate"
+          type="datetime-local"
+          class="mobile-input date-input"
+        />
+      </div>
+
+      <!-- 2. SÉLECTION DU CLIENT -->
       <div class="form-section">
         <div class="section-title">
           <span>Client acheteur</span>
-          <button type="button" @click="showQuickClient = !showQuickClient" class="btn-text-action">
+          <button v-if="!isEditing" type="button" @click="showQuickClient = !showQuickClient" class="btn-text-action">
             {{ showQuickClient ? 'Choisir existant' : '+ Créer un client' }}
           </button>
         </div>
 
-        <!-- Nouveau client rapide -->
-        <div v-if="showQuickClient" class="quick-client-box">
+        <!-- Nouveau client rapide (création seule) -->
+        <div v-if="showQuickClient && !isEditing" class="quick-client-box">
           <input
             v-model="newClientForm.nom"
             type="text"
@@ -67,7 +82,7 @@
         </div>
       </div>
 
-      <!-- 2. ARTICLES DE LA COMMANDE -->
+      <!-- 3. ARTICLES DE LA COMMANDE -->
       <div class="form-section">
         <div class="section-title">
           <span>Articles commandés</span>
@@ -83,7 +98,7 @@
             >
               <option value="">Sélectionner un produit...</option>
               <option v-for="p in products" :key="p.id" :value="p.id">
-                {{ p.nom }} - {{ formatPrice(p.prix_actif?.prix || p.prix_achat) }}
+                {{ p.nom }} - {{ formatPrice(p.prix_actif ?? p.prix_achat) }}
               </option>
             </select>
 
@@ -105,6 +120,17 @@
                 />
                 <span class="currency-tag">Ar</span>
               </div>
+
+              <!-- Revenir au prix catalogue si modifié -->
+              <button
+                type="button"
+                v-if="hasDifferentPrice(item)"
+                @click="resetToCatalogPrice(item)"
+                class="btn-reset-price"
+                title="Rétablir le prix catalogue actif"
+              >
+                <ion-icon :icon="refreshOutline" />
+              </button>
 
               <!-- Delete -->
               <button
@@ -129,7 +155,7 @@
         </button>
       </div>
 
-      <!-- 3. MÉTHODE DE PAIEMENT -->
+      <!-- 4. MÉTHODE DE PAIEMENT -->
       <div class="form-section">
         <div class="section-title">Mode de règlement</div>
         <div class="payment-grid">
@@ -145,14 +171,14 @@
         </div>
       </div>
 
-      <!-- 4. TOTAL & SOUMISSION -->
+      <!-- 5. TOTAL & SOUMISSION -->
       <div class="total-summary-card">
         <div class="summary-line">
-          <span>Nombre de licences :</span>
+          <span>Nombre d'articles :</span>
           <b>{{ totalQuantity }}</b>
         </div>
         <div class="summary-line total">
-          <span>Total à encaisser :</span>
+          <span>Total :</span>
           <span class="grand-total">{{ formatPrice(grandTotal) }}</span>
         </div>
 
@@ -161,9 +187,14 @@
           @click="submitSale"
           :disabled="isSubmitting || !isFormValid"
           class="btn-submit-sale"
+          :class="{ 'btn-submit-edit': isEditing }"
         >
-          <span v-if="isSubmitting">Enregistrement de la vente...</span>
-          <span v-else>Valider & Enregistrer la Vente</span>
+          <span v-if="isSubmitting">
+            {{ isEditing ? 'Mise à jour en cours...' : 'Enregistrement de la vente...' }}
+          </span>
+          <span v-else>
+            {{ isEditing ? 'Enregistrer les modifications' : 'Valider & Enregistrer la Vente' }}
+          </span>
         </button>
       </div>
     </ion-content>
@@ -182,14 +213,18 @@ import {
   IonIcon,
   IonContent,
 } from '@ionic/vue'
-import { closeOutline, addOutline, trashOutline } from 'ionicons/icons'
+import { closeOutline, addOutline, trashOutline, refreshOutline } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useSaleDraft } from '../composables/useSaleDraft'
 
 const props = defineProps({
   isOpen: Boolean,
+  saleToEdit: {
+    type: Object,
+    default: null,
+  },
 })
-const emit = defineEmits(['close', 'sale-created'])
+const emit = defineEmits(['close', 'sale-created', 'sale-updated'])
 
 const { activeDraft, closeSaleModal } = useSaleDraft()
 
@@ -198,9 +233,22 @@ const products = ref([])
 const paymentMethods = ref([])
 const provenances = ref([])
 
+function getLocalDateTimeString(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const year = date.getFullYear()
+  const month = pad(date.getMonth() + 1)
+  const day = pad(date.getDate())
+  const hours = pad(date.getHours())
+  const minutes = pad(date.getMinutes())
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+const saleDate = ref(getLocalDateTimeString())
 const selectedClientId = ref('')
 const selectedPaymentMethodId = ref('')
 const orderArticles = ref([{ produit_id: '', quantite: 1, prix_unitaire: 0 }])
+
+const isEditing = computed(() => !!props.saleToEdit)
 
 const showQuickClient = ref(false)
 const clientSaving = ref(false)
@@ -211,7 +259,29 @@ const errorMessage = ref('')
 
 function formatPrice(val) {
   if (!val && val !== 0) return '0 Ar'
-  return Math.round(val).toLocaleString('fr-FR') + ' Ar'
+  return Math.round(Number(val)).toLocaleString('fr-FR') + ' Ar'
+}
+
+function setDateToNow() {
+  saleDate.value = getLocalDateTimeString()
+}
+
+function getProductActivePrice(productId) {
+  const prod = products.value.find((p) => p.id === productId)
+  if (!prod) return 0
+  return Number(prod.prix_actif ?? prod.prix_achat ?? 0)
+}
+
+function hasDifferentPrice(item) {
+  if (!item.produit_id) return false
+  const activePrice = getProductActivePrice(item.produit_id)
+  return item.prix_unitaire !== undefined && item.prix_unitaire !== null && Number(item.prix_unitaire) !== activePrice
+}
+
+function resetToCatalogPrice(item) {
+  if (item.produit_id) {
+    item.prix_unitaire = getProductActivePrice(item.produit_id)
+  }
 }
 
 const totalQuantity = computed(() => {
@@ -241,7 +311,12 @@ watch(
     if (open) {
       errorMessage.value = ''
       loadReferenceData().then(() => {
-        applyDraftIfAny()
+        if (props.saleToEdit) {
+          populateFromSale(props.saleToEdit)
+        } else {
+          resetForm()
+          applyDraftIfAny()
+        }
       })
     }
   }
@@ -267,6 +342,45 @@ async function loadReferenceData() {
   } catch (err) {
     console.error('Erreur chargement données de vente:', err)
   }
+}
+
+function populateFromSale(sale) {
+  selectedClientId.value = sale.client?.id || ''
+  selectedPaymentMethodId.value = sale.methode_paiement?.id || (paymentMethods.value[0]?.id || '')
+  saleDate.value = sale.date ? getLocalDateTimeString(new Date(sale.date)) : getLocalDateTimeString()
+
+  if (sale.commandes && sale.commandes.length > 0) {
+    orderArticles.value = sale.commandes.map((cmd) => {
+      const prodId = cmd.produit?.id || cmd.produit
+      return {
+        produit_id: prodId,
+        quantite: cmd.quantite || 1,
+        prix_unitaire: Number(cmd.prix_unitaire || 0),
+      }
+    })
+  } else {
+    resetArticlesToDefault()
+  }
+}
+
+function resetArticlesToDefault() {
+  const firstProd = products.value[0]
+  orderArticles.value = [
+    {
+      produit_id: firstProd ? firstProd.id : '',
+      quantite: 1,
+      prix_unitaire: firstProd ? Number(firstProd.prix_actif ?? firstProd.prix_achat ?? 0) : 0,
+    },
+  ]
+}
+
+function resetForm() {
+  selectedClientId.value = clients.value[0]?.id || ''
+  selectedPaymentMethodId.value = paymentMethods.value[0]?.id || ''
+  saleDate.value = getLocalDateTimeString()
+  resetArticlesToDefault()
+  showQuickClient.value = false
+  newClientForm.value = { nom: '', numero: '', id_provenance: '' }
 }
 
 function applyDraftIfAny() {
@@ -305,7 +419,7 @@ function applyDraftIfAny() {
         matchedArticles.push({
           produit_id: p.id,
           quantite: art.quantite || 1,
-          prix_unitaire: art.prix_unitaire || (p.prix_actif ? Number(p.prix_actif.prix) : Number(p.prix_achat) || 0),
+          prix_unitaire: art.prix_unitaire !== undefined ? Number(art.prix_unitaire) : Number(p.prix_actif ?? p.prix_achat ?? 0),
         })
       }
     })
@@ -319,7 +433,7 @@ function applyDraftIfAny() {
 function onProductSelect(item) {
   const prod = products.value.find((p) => p.id === item.produit_id)
   if (prod) {
-    item.prix_unitaire = prod.prix_actif ? Number(prod.prix_actif.prix) : Number(prod.prix_achat) || 0
+    item.prix_unitaire = Number(prod.prix_actif ?? prod.prix_achat ?? 0)
   }
 }
 
@@ -334,10 +448,11 @@ function decrementQty(item) {
 }
 
 function addArticleRow() {
+  const firstProd = products.value[0]
   orderArticles.value.push({
-    produit_id: '',
+    produit_id: firstProd ? firstProd.id : '',
     quantite: 1,
-    prix_unitaire: 0,
+    prix_unitaire: firstProd ? Number(firstProd.prix_actif ?? firstProd.prix_achat ?? 0) : 0,
   })
 }
 
@@ -376,6 +491,7 @@ async function submitSale() {
     const payload = {
       client_id: selectedClientId.value,
       methode_paiement_id: selectedPaymentMethodId.value,
+      date: saleDate.value ? new Date(saleDate.value).toISOString() : undefined,
       articles: orderArticles.value.map((a) => ({
         produit_id: a.produit_id,
         quantite: a.quantite,
@@ -383,14 +499,33 @@ async function submitSale() {
       })),
     }
 
-    const res = await apiClient.post('/ventes/', payload)
-    emit('sale-created', res.data)
+    if (isEditing.value && props.saleToEdit?.id) {
+      const res = await apiClient.put(`/ventes/${props.saleToEdit.id}/`, payload)
+      emit('sale-updated', res.data)
+    } else {
+      const res = await apiClient.post('/ventes/', payload)
+      emit('sale-created', res.data)
+    }
     handleDismiss()
   } catch (err) {
-    errorMessage.value =
-      err.response?.data?.error ||
-      err.response?.data?.detail ||
-      "Une erreur est survenue lors de l'enregistrement de la vente."
+    const errorData = err.response?.data
+    if (typeof errorData === 'string') {
+      errorMessage.value = errorData
+    } else if (errorData?.error) {
+      errorMessage.value = errorData.error
+    } else if (errorData?.detail) {
+      errorMessage.value = errorData.detail
+    } else if (Array.isArray(errorData?.non_field_errors)) {
+      errorMessage.value = errorData.non_field_errors.join(' ')
+    } else if (typeof errorData === 'object' && errorData !== null) {
+      const msgs = []
+      for (const [k, v] of Object.entries(errorData)) {
+        msgs.push(`${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+      }
+      errorMessage.value = msgs.join('\n') || "Une erreur est survenue lors de l'enregistrement."
+    } else {
+      errorMessage.value = "Une erreur est survenue lors de l'enregistrement."
+    }
   } finally {
     isSubmitting.value = false
   }
@@ -422,10 +557,11 @@ function handleDismiss() {
   border-radius: 10px;
   font-size: 0.85rem;
   margin-bottom: 16px;
+  white-space: pre-line;
 }
 
 .form-section {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   background: #151F32;
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 14px;
@@ -448,6 +584,16 @@ function handleDismiss() {
   border: none;
   font-size: 0.78rem;
   font-weight: 600;
+  cursor: pointer;
+}
+
+.badge-count {
+  background: rgba(94, 234, 212, 0.15);
+  color: #5EEAD4;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 600;
 }
 
 .mobile-input,
@@ -461,6 +607,10 @@ function handleDismiss() {
   font-size: 0.85rem;
   outline: none;
   margin-bottom: 8px;
+}
+
+.date-input {
+  color-scheme: dark;
 }
 
 .quick-client-box {
@@ -538,6 +688,20 @@ function handleDismiss() {
   color: #94A3B8;
 }
 
+.btn-reset-price {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38BDF8;
+  border: none;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+}
+
 .btn-del-article {
   background: rgba(239, 68, 68, 0.2);
   color: #EF4444;
@@ -548,6 +712,7 @@ function handleDismiss() {
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
 }
 
 .subtotal-row {
@@ -573,6 +738,7 @@ function handleDismiss() {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  cursor: pointer;
 }
 
 .payment-grid {
@@ -614,7 +780,7 @@ function handleDismiss() {
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 16px;
   border-radius: 14px;
-  margin-top: 20px;
+  margin-top: 16px;
   margin-bottom: 30px;
 }
 
@@ -649,9 +815,15 @@ function handleDismiss() {
   border-radius: 12px;
   font-weight: 700;
   font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.btn-submit-sale.btn-submit-edit {
+  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
 }
 
 .btn-submit-sale:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

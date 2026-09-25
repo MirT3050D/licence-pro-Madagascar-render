@@ -128,6 +128,30 @@
           </select>
         </div>
 
+        <!-- 4. CLIENT -->
+        <div class="filter-group-dash">
+          <label class="filter-label-dash">
+            <User :size="14" class="text-primary" />
+            <span>Client</span>
+          </label>
+          <select v-model="filters.client" @change="loadDashboard" class="form-select select-dash">
+            <option value="">Tous les clients</option>
+            <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.nom }}</option>
+          </select>
+        </div>
+
+        <!-- 5. PROVENANCE -->
+        <div class="filter-group-dash">
+          <label class="filter-label-dash">
+            <Globe :size="14" class="text-primary" />
+            <span>Provenance</span>
+          </label>
+          <select v-model="filters.provenance" @change="loadDashboard" class="form-select select-dash">
+            <option value="">Toutes provenances</option>
+            <option v-for="p in provenancesList" :key="p.id" :value="p.id">{{ p.label }}</option>
+          </select>
+        </div>
+
         <!-- Reset Button -->
         <div class="filter-group-dash reset-group" v-if="hasActiveFilters">
           <button @click="resetFilters" type="button" class="btn btn-secondary btn-sm" title="Réinitialiser">
@@ -142,6 +166,12 @@
         <span class="text-xs text-muted">Données actuellement filtrées par :</span>
         <span v-if="activeVendorName" class="filter-pill">
           Vendeur : <strong>{{ activeVendorName }}</strong>
+        </span>
+        <span v-if="activeClientName" class="filter-pill">
+          Client : <strong>{{ activeClientName }}</strong>
+        </span>
+        <span v-if="activeProvenanceName" class="filter-pill">
+          Provenance : <strong>{{ activeProvenanceName }}</strong>
         </span>
         <span v-if="filters.periode !== 'all'" class="filter-pill">
           Période : <strong>{{ activePeriodLabel }}</strong>
@@ -330,7 +360,9 @@ import {
   Zap,
   Calendar,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  User,
+  Globe
 } from '@lucide/vue'
 import {
   Chart as ChartJS,
@@ -366,6 +398,8 @@ ChartJS.register(
 const loading = ref(false)
 const vendorsList = ref([])
 const paymentMethods = ref([])
+const clientsList = ref([])
+const provenancesList = ref([])
 
 const filters = ref({
   vendeur: '',
@@ -373,6 +407,8 @@ const filters = ref({
   date_debut: '',
   date_fin: '',
   methode_paiement: '',
+  client: '',
+  provenance: '',
 })
 
 const data = ref({
@@ -387,7 +423,9 @@ const hasActiveFilters = computed(() => {
   return !!(
     filters.value.vendeur ||
     filters.value.periode !== 'all' ||
-    filters.value.methode_paiement
+    filters.value.methode_paiement ||
+    filters.value.client ||
+    filters.value.provenance
   )
 })
 
@@ -401,6 +439,18 @@ const activePaymentName = computed(() => {
   if (!filters.value.methode_paiement) return ''
   const m = paymentMethods.value.find(item => String(item.id) === String(filters.value.methode_paiement))
   return m ? m.label : ''
+})
+
+const activeClientName = computed(() => {
+  if (!filters.value.client) return ''
+  const c = clientsList.value.find(item => String(item.id) === String(filters.value.client))
+  return c ? c.nom : ''
+})
+
+const activeProvenanceName = computed(() => {
+  if (!filters.value.provenance) return ''
+  const p = provenancesList.value.find(item => String(item.id) === String(filters.value.provenance))
+  return p ? p.label : ''
 })
 
 const activePeriodLabel = computed(() => {
@@ -528,18 +578,24 @@ function resetFilters() {
     date_debut: '',
     date_fin: '',
     methode_paiement: '',
+    client: '',
+    provenance: '',
   }
   loadDashboard()
 }
 
 async function fetchDependencies() {
   try {
-    const [uRes, mRes] = await Promise.all([
+    const [uRes, mRes, cRes, pRes] = await Promise.all([
       apiClient.get('/auth/users/').catch(() => ({ data: [] })),
-      apiClient.get('/ventes/methodes-paiement/').catch(() => ({ data: [] }))
+      apiClient.get('/ventes/methodes-paiement/').catch(() => ({ data: [] })),
+      apiClient.get('/clients/').catch(() => ({ data: [] })),
+      apiClient.get('/clients/provenances/').catch(() => ({ data: [] }))
     ])
     vendorsList.value = uRes.data.results || uRes.data || []
-    paymentMethods.value = mRes.data || []
+    paymentMethods.value = mRes.data.results || mRes.data || []
+    clientsList.value = cRes.data.results || cRes.data || []
+    provenancesList.value = pRes.data.results || pRes.data || []
   } catch (err) {
     console.error('Erreur chargement dépendances dashboard:', err)
   }
@@ -553,6 +609,8 @@ async function loadDashboard() {
     if (filters.value.date_debut) params.date_debut = filters.value.date_debut
     if (filters.value.date_fin) params.date_fin = filters.value.date_fin
     if (filters.value.methode_paiement) params.methode_paiement = filters.value.methode_paiement
+    if (filters.value.client) params.client = filters.value.client
+    if (filters.value.provenance) params.provenance = filters.value.provenance
 
     const res = await apiClient.get('/ventes/dashboard/', { params })
     data.value = res.data
@@ -564,7 +622,9 @@ async function loadDashboard() {
 }
 
 function formatCurrency(val) {
-  return new Intl.NumberFormat('fr-MG').format(val || 0) + ' Ar'
+  const num = Number(val)
+  if (isNaN(num)) return '0 Ar'
+  return new Intl.NumberFormat('fr-MG').format(Math.round(num)) + ' Ar'
 }
 
 onMounted(async () => {

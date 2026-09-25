@@ -54,6 +54,31 @@
         </button>
       </div>
 
+      <!-- Filtres Dashboard Mobile -->
+      <div class="dash-filters-card">
+        <div class="dash-filter-row">
+          <select v-model="selectedProvenance" @change="loadDashboardData" class="dash-filter-select">
+            <option value="">🌐 Toutes provenances</option>
+            <option v-for="prov in provenances" :key="prov.id" :value="prov.id">{{ prov.label }}</option>
+          </select>
+          <select v-model="selectedClient" @change="loadDashboardData" class="dash-filter-select">
+            <option value="">👤 Tous les clients</option>
+            <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.nom }}</option>
+          </select>
+        </div>
+
+        <div class="dash-period-pills">
+          <button
+            v-for="p in periodOptions"
+            :key="p.id"
+            :class="['period-pill', activePeriod === p.id ? 'active' : '']"
+            @click="setPeriod(p.id)"
+          >
+            {{ p.label }}
+          </button>
+        </div>
+      </div>
+
       <!-- KPI Summary Cards -->
       <div class="kpi-grid">
         <div class="kpi-card">
@@ -185,13 +210,31 @@ const kpiData = ref({
   top_produits: [],
 })
 const recentSales = ref([])
+const clients = ref([])
+const provenances = ref([])
+const selectedProvenance = ref('')
+const selectedClient = ref('')
+const activePeriod = ref('all')
+
+const periodOptions = [
+  { id: 'all', label: 'Tout' },
+  { id: 'today', label: "Aujourd'hui" },
+  { id: '7d', label: '7 jours' },
+  { id: '30d', label: '30 jours' },
+]
 
 const isSaleModalOpen = ref(false)
 const isClientModalOpen = ref(false)
 
+function setPeriod(pId) {
+  activePeriod.value = pId
+  loadDashboardData()
+}
+
 function formatPrice(val) {
-  if (!val && val !== 0) return '0 Ar'
-  return Math.round(val).toLocaleString('fr-FR') + ' Ar'
+  const num = Number(val)
+  if (isNaN(num)) return '0 Ar'
+  return Math.round(num).toLocaleString('fr-FR') + ' Ar'
 }
 
 function formatDate(isoStr) {
@@ -200,15 +243,52 @@ function formatDate(isoStr) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
+async function loadFilterDependencies() {
+  try {
+    const [cRes, pRes] = await Promise.all([
+      apiClient.get('/clients/'),
+      apiClient.get('/clients/provenances/'),
+    ])
+    clients.value = cRes.data.results || cRes.data || []
+    provenances.value = pRes.data.results || pRes.data || []
+  } catch (err) {
+    console.error('Erreur dépendances dashboard mobile:', err)
+  }
+}
+
 async function loadDashboardData() {
   loading.value = true
   try {
+    const params = {}
+    if (selectedClient.value) params.client = selectedClient.value
+    if (selectedProvenance.value) params.provenance = selectedProvenance.value
+
+    const today = new Date()
+    if (activePeriod.value === 'today') {
+      params.date_debut = today.toISOString().split('T')[0]
+    } else if (activePeriod.value === '7d') {
+      const past = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      params.date_debut = past.toISOString().split('T')[0]
+    } else if (activePeriod.value === '30d') {
+      const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      params.date_debut = past.toISOString().split('T')[0]
+    }
+
+    const salesParams = { ...params, limit: 5 }
+
     const [dashRes, salesRes] = await Promise.all([
-      apiClient.get('/ventes/dashboard/'),
-      apiClient.get('/ventes/?limit=5'),
+      apiClient.get('/ventes/dashboard/', { params }),
+      apiClient.get('/ventes/', { params: salesParams }),
     ])
 
-    kpiData.value = dashRes.data || {}
+    const resData = dashRes.data || {}
+    kpiData.value = {
+      chiffre_affaires: resData.chiffre_affaires ?? resData.kpis?.chiffre_affaires ?? 0,
+      marge_nette: resData.marge_nette ?? resData.kpis?.marge_nette ?? 0,
+      nombre_ventes: resData.nombre_ventes ?? resData.kpis?.nombre_ventes ?? 0,
+      quantite_totale: resData.quantite_totale ?? resData.kpis?.quantite_totale ?? 0,
+      top_produits: resData.top_produits || [],
+    }
     recentSales.value = (salesRes.data.results || salesRes.data || []).slice(0, 5)
   } catch (err) {
     console.error('Erreur chargement dashboard:', err)
@@ -227,6 +307,7 @@ function onSaleCreated() {
 }
 
 onMounted(() => {
+  loadFilterDependencies()
   loadDashboardData()
 })
 </script>
@@ -374,6 +455,56 @@ onMounted(() => {
 .action-text {
   font-size: 0.85rem;
   font-weight: 700;
+}
+
+.dash-filters-card {
+  background: #151F32;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 0 16px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dash-filter-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dash-filter-select {
+  flex: 1;
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #FFFFFF;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.dash-period-pills {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.period-pill {
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94A3B8;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.period-pill.active {
+  background: #0D9488;
+  color: #FFFFFF;
+  border-color: #0D9488;
 }
 
 .kpi-grid {

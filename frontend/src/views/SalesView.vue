@@ -114,6 +114,18 @@
           <option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.label }}</option>
         </select>
 
+        <!-- Filtre Client -->
+        <select v-model="filters.client" @change="fetchSales" class="form-select filter-select">
+          <option value="">👤 Tous les clients</option>
+          <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.nom }}</option>
+        </select>
+
+        <!-- Filtre Provenance -->
+        <select v-model="filters.provenance" @change="fetchSales" class="form-select filter-select">
+          <option value="">🌐 Toutes provenances</option>
+          <option v-for="prov in provenancesList" :key="prov.id" :value="prov.id">{{ prov.label }}</option>
+        </select>
+
         <!-- Bouton Réinitialiser -->
         <button
           v-if="hasActiveFilters"
@@ -145,6 +157,12 @@
           </span>
           <span v-if="activeFilterVendorName" class="active-filter-pill">
             Vendeur : <strong>{{ activeFilterVendorName }}</strong>
+          </span>
+          <span v-if="activeClientName" class="active-filter-pill">
+            Client : <strong>{{ activeClientName }}</strong>
+          </span>
+          <span v-if="activeProvenanceName" class="active-filter-pill">
+            Provenance : <strong>{{ activeProvenanceName }}</strong>
           </span>
           <span v-if="filters.search" class="active-filter-pill">
             Recherche : <strong>"{{ filters.search }}"</strong>
@@ -186,7 +204,12 @@
               </td>
               <td>
                 <div class="font-bold">{{ vente.client?.nom }}</div>
-                <div class="text-xs text-muted">{{ vente.client?.numero || 'Sans numéro' }}</div>
+                <div class="text-xs text-muted flex items-center gap-1.5 mt-0.5">
+                  <span>{{ vente.client?.numero || 'Sans numéro' }}</span>
+                  <span v-if="vente.client?.provenance?.label" class="badge badge-secondary badge-xs">
+                    {{ vente.client.provenance.label }}
+                  </span>
+                </div>
               </td>
               <td>
                 <div class="vendor-cell">
@@ -551,6 +574,7 @@ const clientsList = ref([])
 const productsList = ref([])
 const paymentMethods = ref([])
 const vendorsList = ref([])
+const provenancesList = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 
@@ -560,6 +584,8 @@ const filters = ref({
   date_debut: '',
   date_fin: '',
   methode_paiement: '',
+  client: '',
+  provenance: '',
 })
 
 const activePeriodPreset = ref('all')
@@ -605,6 +631,8 @@ const hasActiveFilters = computed(() => {
     filters.value.date_debut ||
     filters.value.date_fin ||
     filters.value.methode_paiement ||
+    filters.value.client ||
+    filters.value.provenance ||
     activePeriodPreset.value !== 'all'
   )
 })
@@ -613,6 +641,18 @@ const activeFilterVendorName = computed(() => {
   if (!filters.value.vendeur) return ''
   const v = vendorsList.value.find(u => String(u.id) === String(filters.value.vendeur))
   return v ? `${v.prenom} ${v.nom}` : ''
+})
+
+const activeClientName = computed(() => {
+  if (!filters.value.client) return ''
+  const c = clientsList.value.find(item => String(item.id) === String(filters.value.client))
+  return c ? c.nom : ''
+})
+
+const activeProvenanceName = computed(() => {
+  if (!filters.value.provenance) return ''
+  const p = provenancesList.value.find(item => String(item.id) === String(filters.value.provenance))
+  return p ? p.label : ''
 })
 
 const activePeriodLabel = computed(() => {
@@ -625,7 +665,8 @@ const activePeriodLabel = computed(() => {
 })
 
 const filteredSalesTotal = computed(() => {
-  return sales.value.reduce((acc, v) => acc + (v.total || 0), 0)
+  if (!Array.isArray(sales.value)) return 0
+  return sales.value.reduce((acc, v) => acc + (Number(v.total) || 0), 0)
 })
 
 async function fetchSales() {
@@ -637,9 +678,11 @@ async function fetchSales() {
     if (filters.value.date_debut) params.date_debut = filters.value.date_debut
     if (filters.value.date_fin) params.date_fin = filters.value.date_fin
     if (filters.value.methode_paiement) params.methode_paiement = filters.value.methode_paiement
+    if (filters.value.client) params.client = filters.value.client
+    if (filters.value.provenance) params.provenance = filters.value.provenance
 
     const res = await apiClient.get('/ventes/', { params })
-    sales.value = res.data
+    sales.value = res.data.results || res.data || []
   } catch (err) {
     console.error('Erreur chargement ventes:', err)
   } finally {
@@ -649,16 +692,18 @@ async function fetchSales() {
 
 async function fetchFormDependencies() {
   try {
-    const [cRes, pRes, mRes, uRes] = await Promise.all([
+    const [cRes, pRes, mRes, uRes, provRes] = await Promise.all([
       apiClient.get('/clients/'),
       apiClient.get('/produits/'),
       apiClient.get('/ventes/methodes-paiement/'),
-      apiClient.get('/auth/users/').catch(() => ({ data: [] }))
+      apiClient.get('/auth/users/').catch(() => ({ data: [] })),
+      apiClient.get('/clients/provenances/').catch(() => ({ data: [] }))
     ])
-    clientsList.value = cRes.data
-    productsList.value = pRes.data
-    paymentMethods.value = mRes.data
+    clientsList.value = cRes.data.results || cRes.data || []
+    productsList.value = pRes.data.results || pRes.data || []
+    paymentMethods.value = mRes.data.results || mRes.data || []
     vendorsList.value = uRes.data.results || uRes.data || []
+    provenancesList.value = provRes.data.results || provRes.data || []
   } catch (err) {
     console.error('Erreur dépendances vente:', err)
   }
@@ -722,6 +767,8 @@ function resetFilters() {
     date_debut: '',
     date_fin: '',
     methode_paiement: '',
+    client: '',
+    provenance: '',
   }
   activePeriodPreset.value = 'all'
   fetchSales()
@@ -964,7 +1011,9 @@ function copyText(txt) {
 }
 
 function formatPrice(val) {
-  return new Intl.NumberFormat('fr-MG').format(val || 0) + ' Ar'
+  const num = Number(val)
+  if (isNaN(num)) return '0 Ar'
+  return new Intl.NumberFormat('fr-MG').format(Math.round(num)) + ' Ar'
 }
 
 function formatDateTime(dateStr) {

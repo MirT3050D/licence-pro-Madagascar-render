@@ -21,9 +21,20 @@
             placeholder="Rechercher client, tél, n°..."
             class="search-field"
           />
-          <button v-if="searchQuery" @click="clearSearch" class="clear-search-btn">
+          <button v-if="searchQuery || selectedClient || selectedProvenance" @click="clearSearch" class="clear-search-btn">
             <ion-icon :icon="closeCircle" />
           </button>
+        </div>
+
+        <div class="filter-selects-row">
+          <select v-model="selectedProvenance" @change="fetchSales" class="mobile-filter-select">
+            <option value="">🌐 Toutes provenances</option>
+            <option v-for="prov in provenances" :key="prov.id" :value="prov.id">{{ prov.label }}</option>
+          </select>
+          <select v-model="selectedClient" @change="fetchSales" class="mobile-filter-select">
+            <option value="">👤 Tous clients</option>
+            <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.nom }}</option>
+          </select>
         </div>
 
         <div class="period-pills">
@@ -72,12 +83,28 @@
         >
           <div class="sale-header">
             <div class="sale-client-info">
-              <span class="client-name">{{ sale.client?.nom || 'Client Inconnu' }}</span>
+              <div class="client-name-line">
+                <span class="client-name">{{ sale.client?.nom || 'Client Inconnu' }}</span>
+                <span v-if="sale.client?.provenance?.label" class="provenance-badge">
+                  {{ sale.client.provenance.label }}
+                </span>
+              </div>
               <span class="sale-meta">{{ formatDate(sale.date) }} • {{ sale.methode_paiement?.label || 'Direct' }}</span>
             </div>
-            <div class="sale-total-block">
-              <span class="sale-total">{{ formatPrice(sale.total) }}</span>
-              <span class="badge-status">Conclue</span>
+            <div class="sale-header-right">
+              <div class="sale-total-block">
+                <span class="sale-total">{{ formatPrice(sale.total) }}</span>
+                <span class="badge-status">Conclue</span>
+              </div>
+              <button
+                v-if="isSuperAdmin"
+                type="button"
+                class="btn-edit-badge"
+                @click.stop="openEditSale(sale)"
+                title="Modifier cette vente"
+              >
+                <ion-icon :icon="createOutline" />
+              </button>
             </div>
           </div>
 
@@ -109,6 +136,18 @@
               </div>
             </div>
 
+            <!-- Action Modifier la vente -->
+            <div v-if="isSuperAdmin" class="card-edit-action-box">
+              <button
+                type="button"
+                @click.stop="openEditSale(sale)"
+                class="btn-edit-sale-expanded"
+              >
+                <ion-icon :icon="createOutline" />
+                <span>Modifier cette vente</span>
+              </button>
+            </div>
+
             <!-- Activation guides -->
             <div v-if="sale.guides_activation && sale.guides_activation.length" class="activation-guides-box">
               <div class="activation-header">
@@ -136,7 +175,13 @@
       </div>
     </ion-content>
 
-    <SaleModal :is-open="isSaleModalOpen" @close="isSaleModalOpen = false" @sale-created="onSaleCreated" />
+    <SaleModal
+      :is-open="isSaleModalOpen"
+      :sale-to-edit="saleToEdit"
+      @close="onCloseSaleModal"
+      @sale-created="onSaleCreated"
+      @sale-updated="onSaleUpdated"
+    />
   </ion-page>
 </template>
 
@@ -161,17 +206,26 @@ import {
   closeCircle,
   cartOutline,
   copyOutline,
+  createOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
+import { useAuth } from '../composables/useAuth'
 import SaleModal from '../components/SaleModal.vue'
+
+const { isSuperAdmin } = useAuth()
 
 const loading = ref(false)
 const sales = ref([])
+const clients = ref([])
+const provenances = ref([])
+const selectedProvenance = ref('')
+const selectedClient = ref('')
 const searchQuery = ref('')
 const activePeriod = ref('all')
 const expandedSaleId = ref(null)
 
 const isSaleModalOpen = ref(false)
+const saleToEdit = ref(null)
 
 const periodOptions = [
   { id: 'all', label: 'Tout' },
@@ -181,12 +235,14 @@ const periodOptions = [
 ]
 
 const totalSalesAmount = computed(() => {
-  return sales.value.reduce((acc, curr) => acc + Number(curr.total || 0), 0)
+  if (!Array.isArray(sales.value)) return 0
+  return sales.value.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0)
 })
 
 function formatPrice(val) {
-  if (!val && val !== 0) return '0 Ar'
-  return Math.round(val).toLocaleString('fr-FR') + ' Ar'
+  const num = Number(val)
+  if (isNaN(num)) return '0 Ar'
+  return Math.round(num).toLocaleString('fr-FR') + ' Ar'
 }
 
 function formatDate(isoStr) {
@@ -200,11 +256,55 @@ function toggleExpand(id) {
 }
 
 function openNewSale() {
+  saleToEdit.value = null
   isSaleModalOpen.value = true
 }
 
-function onSaleCreated() {
-  fetchSales()
+function openEditSale(sale) {
+  if (!isSuperAdmin.value) {
+    showToast("Seul un administrateur peut modifier une vente.", 'warning')
+    return
+  }
+  saleToEdit.value = sale
+  isSaleModalOpen.value = true
+}
+
+function onCloseSaleModal() {
+  isSaleModalOpen.value = false
+  saleToEdit.value = null
+}
+
+async function onSaleCreated() {
+  await fetchSales()
+  showToast('Vente enregistrée avec succès !', 'success')
+}
+
+async function onSaleUpdated() {
+  await fetchSales()
+  showToast('Vente mise à jour avec succès !', 'success')
+}
+
+async function showToast(message, color = 'success') {
+  const toast = await toastController.create({
+    message,
+    duration: 2500,
+    color,
+    position: 'top',
+  })
+  await toast.present()
+}
+
+async function loadFilterOptions() {
+  try {
+    const [cRes, pRes] = await Promise.all([
+      apiClient.get('/clients/'),
+      apiClient.get('/clients/provenances/'),
+    ])
+    clients.value = cRes.data.results || cRes.data || []
+    provenances.value = pRes.data.results || pRes.data || []
+  } catch (err) {
+    console.error('Erreur chargement filtres ventes:', err)
+  }
 }
 
 async function fetchSales() {
@@ -213,6 +313,12 @@ async function fetchSales() {
     const params = {}
     if (searchQuery.value.trim()) {
       params.search = searchQuery.value.trim()
+    }
+    if (selectedClient.value) {
+      params.client = selectedClient.value
+    }
+    if (selectedProvenance.value) {
+      params.provenance = selectedProvenance.value
     }
 
     const today = new Date()
@@ -245,6 +351,8 @@ function onSearch() {
 
 function clearSearch() {
   searchQuery.value = ''
+  selectedProvenance.value = ''
+  selectedClient.value = ''
   fetchSales()
 }
 
@@ -265,16 +373,11 @@ async function copyActivationGuide(guideObj) {
     await navigator.clipboard.writeText(text)
   }
 
-  const toast = await toastController.create({
-    message: 'Guide copié ! Prêt à être collé au client sur WhatsApp.',
-    duration: 2500,
-    color: 'success',
-    position: 'top',
-  })
-  await toast.present()
+  showToast('Guide copié ! Prêt à être collé au client sur WhatsApp.', 'success')
 }
 
 onMounted(() => {
+  loadFilterOptions()
   fetchSales()
 })
 </script>
@@ -337,6 +440,39 @@ onMounted(() => {
   overflow-x: auto;
 }
 
+.filter-selects-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mobile-filter-select {
+  flex: 1;
+  background: #151F32;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #FFFFFF;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.client-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.provenance-badge {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38BDF8;
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
 .period-pill {
   background: #151F32;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -393,6 +529,12 @@ onMounted(() => {
   align-items: flex-start;
 }
 
+.sale-client-info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
+}
+
 .client-name {
   font-size: 0.95rem;
   font-weight: 700;
@@ -405,6 +547,12 @@ onMounted(() => {
   color: #94A3B8;
   margin-top: 2px;
   display: block;
+}
+
+.sale-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sale-total-block {
@@ -428,6 +576,26 @@ onMounted(() => {
   border-radius: 4px;
   font-weight: 600;
   margin-top: 2px;
+}
+
+.btn-edit-badge {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38BDF8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-edit-badge:active {
+  transform: scale(0.92);
+  background: rgba(56, 189, 248, 0.25);
 }
 
 .sale-items-compact {
@@ -456,11 +624,16 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .detail-row {
   display: flex;
   justify-content: space-between;
   font-size: 0.8rem;
-  margin-bottom: 6px;
 }
 
 .detail-row .lbl {
@@ -476,6 +649,31 @@ onMounted(() => {
   color: #38BDF8;
   text-decoration: none;
   font-weight: 600;
+}
+
+.card-edit-action-box {
+  margin-top: 12px;
+}
+
+.btn-edit-sale-expanded {
+  width: 100%;
+  background: rgba(59, 130, 246, 0.12);
+  color: #60A5FA;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-edit-sale-expanded:active {
+  background: rgba(59, 130, 246, 0.25);
 }
 
 .activation-guides-box {
@@ -527,6 +725,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  cursor: pointer;
 }
 
 .empty-state {

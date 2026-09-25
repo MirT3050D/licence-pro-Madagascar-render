@@ -52,7 +52,7 @@ class MethodePaiementViewSet(viewsets.ModelViewSet):
 
 class VenteViewSet(viewsets.ModelViewSet):
     queryset = Vente.objects.all().select_related(
-        'client', 'user_affilie', 'user_affilie__role', 'methode_paiement'
+        'client', 'client__provenance', 'user_affilie', 'user_affilie__role', 'methode_paiement'
     ).prefetch_related(
         'commandes__produit__activations'
     )
@@ -72,6 +72,7 @@ class VenteViewSet(viewsets.ModelViewSet):
         user_id = self.request.query_params.get('vendeur') or self.request.query_params.get('user_affilie')
         methode_id = self.request.query_params.get('methode_paiement')
         client_id = self.request.query_params.get('client')
+        provenance_id = self.request.query_params.get('provenance')
         search = self.request.query_params.get('search') or self.request.query_params.get('q')
 
         if date_debut:
@@ -84,11 +85,14 @@ class VenteViewSet(viewsets.ModelViewSet):
             qs = qs.filter(methode_paiement_id=methode_id)
         if client_id:
             qs = qs.filter(client_id=client_id)
+        if provenance_id:
+            qs = qs.filter(client__provenance_id=provenance_id)
         if search:
             search = search.strip()
             qs = qs.filter(
                 Q(client__nom__icontains=search) |
                 Q(client__numero__icontains=search) |
+                Q(client__provenance__label__icontains=search) |
                 Q(id__icontains=search)
             )
 
@@ -161,6 +165,8 @@ class DashboardView(APIView):
         date_debut = request.query_params.get('date_debut')
         date_fin = request.query_params.get('date_fin')
         methode_id = request.query_params.get('methode_paiement')
+        client_id = request.query_params.get('client')
+        provenance_id = request.query_params.get('provenance')
 
         ventes_qs = Vente.objects.all().prefetch_related('commandes__produit')
         commandes_qs = Commande.objects.select_related('produit', 'vente')
@@ -177,18 +183,26 @@ class DashboardView(APIView):
         if methode_id:
             ventes_qs = ventes_qs.filter(methode_paiement_id=methode_id)
             commandes_qs = commandes_qs.filter(vente__methode_paiement_id=methode_id)
+        if client_id:
+            ventes_qs = ventes_qs.filter(client_id=client_id)
+            commandes_qs = commandes_qs.filter(vente__client_id=client_id)
+        if provenance_id:
+            ventes_qs = ventes_qs.filter(client__provenance_id=provenance_id)
+            commandes_qs = commandes_qs.filter(vente__client__provenance_id=provenance_id)
 
         # 1. Total KPI
         total_ventes = ventes_qs.count()
 
         ca_total = 0.0
         marge_nette = 0.0
+        quantite_totale = 0
 
         for cmd in commandes_qs:
             st = float(cmd.quantite * cmd.prix_unitaire)
             cout = float(cmd.quantite * cmd.produit.prix_achat)
             ca_total += st
             marge_nette += (st - cout)
+            quantite_totale += cmd.quantite
 
         # 2. Évolution des ventes par jour
         evolution_ventes = (
@@ -229,6 +243,10 @@ class DashboardView(APIView):
                 user_ventes = user_ventes.filter(date__date__lte=date_fin)
             if methode_id:
                 user_ventes = user_ventes.filter(methode_paiement_id=methode_id)
+            if client_id:
+                user_ventes = user_ventes.filter(client_id=client_id)
+            if provenance_id:
+                user_ventes = user_ventes.filter(client__provenance_id=provenance_id)
 
             nb_v = user_ventes.count()
             ca_v = sum(vente.total for vente in user_ventes)
@@ -250,7 +268,12 @@ class DashboardView(APIView):
                 'chiffre_affaires': ca_total,
                 'marge_nette': marge_nette,
                 'nombre_ventes': total_ventes,
+                'quantite_totale': quantite_totale,
             },
+            'chiffre_affaires': ca_total,
+            'marge_nette': marge_nette,
+            'nombre_ventes': total_ventes,
+            'quantite_totale': quantite_totale,
             'evolution_ventes': list(evolution_ventes),
             'repartition_paiements': list(repartition_paiements),
             'top_produits': list(top_produits),
