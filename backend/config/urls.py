@@ -6,7 +6,25 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from django.http import JsonResponse
+
+def home_view(request):
+    return JsonResponse({
+        "status": "online",
+        "app": "Licence Pro Madagascar API",
+        "version": "1.0.0",
+        "endpoints": {
+            "auth": "/api/auth/",
+            "produits": "/api/produits/",
+            "clients": "/api/clients/",
+            "ventes": "/api/ventes/",
+            "ai": "/api/ai/",
+            "admin": "/admin/"
+        }
+    })
+
 urlpatterns = [
+    path('', home_view, name='home'),
     path('admin/', admin.site.urls),
     
     # API endpoints
