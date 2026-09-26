@@ -53,13 +53,23 @@
 
             <div class="form-group">
               <label class="form-lbl">Mot de passe</label>
-              <input
-                v-model="loginForm.password"
-                type="password"
-                required
-                placeholder="••••••••••••"
-                class="mobile-auth-input"
-              />
+              <div class="password-input-wrap">
+                <input
+                  v-model="loginForm.password"
+                  :type="showLoginPassword ? 'text' : 'password'"
+                  required
+                  placeholder="••••••••••••"
+                  class="mobile-auth-input"
+                />
+                <button
+                  type="button"
+                  class="btn-toggle-pwd"
+                  @click="showLoginPassword = !showLoginPassword"
+                  tabindex="-1"
+                >
+                  <ion-icon :icon="showLoginPassword ? eyeOffOutline : eyeOutline" />
+                </button>
+              </div>
             </div>
 
             <button type="submit" :disabled="loading" class="btn-auth-submit">
@@ -117,14 +127,46 @@
 
             <div class="form-group">
               <label class="form-lbl">Mot de passe *</label>
-              <input
-                v-model="registerForm.password"
-                type="password"
-                required
-                minlength="6"
-                placeholder="Minimum 6 caractères"
-                class="mobile-auth-input"
-              />
+              <div class="password-input-wrap">
+                <input
+                  v-model="registerForm.password"
+                  :type="showRegisterPassword ? 'text' : 'password'"
+                  required
+                  minlength="6"
+                  placeholder="Minimum 6 caractères"
+                  class="mobile-auth-input"
+                />
+                <button
+                  type="button"
+                  class="btn-toggle-pwd"
+                  @click="showRegisterPassword = !showRegisterPassword"
+                  tabindex="-1"
+                >
+                  <ion-icon :icon="showRegisterPassword ? eyeOffOutline : eyeOutline" />
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-lbl">Confirmer le mot de passe *</label>
+              <div class="password-input-wrap">
+                <input
+                  v-model="registerForm.password_confirm"
+                  :type="showRegisterPasswordConfirm ? 'text' : 'password'"
+                  required
+                  minlength="6"
+                  placeholder="Répétez le mot de passe"
+                  class="mobile-auth-input"
+                />
+                <button
+                  type="button"
+                  class="btn-toggle-pwd"
+                  @click="showRegisterPasswordConfirm = !showRegisterPasswordConfirm"
+                  tabindex="-1"
+                >
+                  <ion-icon :icon="showRegisterPasswordConfirm ? eyeOffOutline : eyeOutline" />
+                </button>
+              </div>
             </div>
 
             <button type="submit" :disabled="loading" class="btn-auth-submit register">
@@ -145,7 +187,8 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { IonPage, IonContent } from '@ionic/vue'
+import { IonPage, IonContent, IonIcon } from '@ionic/vue'
+import { eyeOutline, eyeOffOutline } from 'ionicons/icons'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
@@ -155,6 +198,9 @@ const isRegister = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const showLoginPassword = ref(false)
+const showRegisterPassword = ref(false)
+const showRegisterPasswordConfirm = ref(false)
 
 const loginForm = ref({
   email: '',
@@ -167,6 +213,7 @@ const registerForm = ref({
   numero: '',
   email: '',
   password: '',
+  password_confirm: '',
 })
 
 async function submitLogin() {
@@ -190,6 +237,27 @@ async function submitLogin() {
 async function submitRegister() {
   errorMessage.value = ''
   successMessage.value = ''
+
+  if (
+    !registerForm.value.prenom.trim() ||
+    !registerForm.value.nom.trim() ||
+    !registerForm.value.numero.trim() ||
+    !registerForm.value.email.trim()
+  ) {
+    errorMessage.value = 'Veuillez renseigner tous les champs obligatoires.'
+    return
+  }
+
+  if (registerForm.value.password.length < 6) {
+    errorMessage.value = 'Le mot de passe doit comporter au moins 6 caractères.'
+    return
+  }
+
+  if (registerForm.value.password !== registerForm.value.password_confirm) {
+    errorMessage.value = 'Les mots de passe ne correspondent pas.'
+    return
+  }
+
   loading.value = true
 
   try {
@@ -197,14 +265,23 @@ async function submitRegister() {
       nom: registerForm.value.nom.trim(),
       prenom: registerForm.value.prenom.trim(),
       numero: registerForm.value.numero.trim(),
-      email: registerForm.value.email.trim(),
+      email: registerForm.value.email.trim().toLowerCase(),
       password: registerForm.value.password,
+      password_confirm: registerForm.value.password_confirm,
     })
 
     if (res.access) {
       router.replace({ path: '/tabs/dashboard' })
     } else {
       isRegister.value = false
+      registerForm.value = {
+        nom: '',
+        prenom: '',
+        numero: '',
+        email: '',
+        password: '',
+        password_confirm: '',
+      }
       successMessage.value =
         res.message ||
         'Votre compte vendeur a été créé avec succès ! Un administrateur doit valider votre accès.'
@@ -212,10 +289,25 @@ async function submitRegister() {
   } catch (err) {
     const data = err.response?.data
     if (data && typeof data === 'object') {
+      const fieldLabels = {
+        nom: 'Nom',
+        prenom: 'Prénom',
+        numero: 'Numéro WhatsApp / Téléphone',
+        email: 'Adresse email',
+        password: 'Mot de passe',
+        password_confirm: 'Confirmation du mot de passe',
+      }
       const firstKey = Object.keys(data)[0]
-      errorMessage.value = Array.isArray(data[firstKey]) ? data[firstKey][0] : data[firstKey]
+      const rawMsg = Array.isArray(data[firstKey]) ? data[firstKey][0] : data[firstKey]
+      if (firstKey && fieldLabels[firstKey]) {
+        errorMessage.value = `${fieldLabels[firstKey]} : ${rawMsg}`
+      } else if (typeof rawMsg === 'string') {
+        errorMessage.value = rawMsg
+      } else {
+        errorMessage.value = JSON.stringify(rawMsg)
+      }
     } else {
-      errorMessage.value = "Impossible de créer le compte. Vérifiez les informations."
+      errorMessage.value = "Impossible de créer le compte. Vérifiez les informations saisies."
     }
   } finally {
     loading.value = false
@@ -347,6 +439,36 @@ async function submitRegister() {
   color: #94A3B8;
   margin-bottom: 6px;
   font-weight: 500;
+}
+
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-wrap .mobile-auth-input {
+  padding-right: 46px;
+}
+
+.btn-toggle-pwd {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.btn-toggle-pwd:focus {
+  outline: none;
 }
 
 .mobile-auth-input {

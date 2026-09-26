@@ -84,14 +84,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
-    password_confirm = serializers.CharField(write_only=True, min_length=6)
+    password_confirm = serializers.CharField(write_only=True, min_length=6, required=False)
 
     class Meta:
         model = Utilisateur
         fields = ['id', 'nom', 'prenom', 'numero', 'email', 'password', 'password_confirm']
 
     def validate(self, attrs):
-        if attrs.get('password') != attrs.get('password_confirm'):
+        password = attrs.get('password')
+        password_confirm = attrs.get('password_confirm')
+        if password_confirm is not None and password != password_confirm:
             raise serializers.ValidationError({
                 'password_confirm': "Les mots de passe ne correspondent pas."
             })

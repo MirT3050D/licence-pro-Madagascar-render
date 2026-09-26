@@ -52,6 +52,25 @@ class MethodePaiementViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(instance).data)
 
 
+def parse_id_list(query_params, *keys):
+    """
+    Parses comma-separated strings or repeated query parameters into a list of unique integers.
+    Supports both singular and plural parameter names (e.g., 'provenance', 'provenances').
+    """
+    raw_values = []
+    for k in keys:
+        raw_values.extend(query_params.getlist(k))
+    ids = []
+    for item in raw_values:
+        if not item:
+            continue
+        for part in str(item).split(','):
+            part = part.strip()
+            if part.isdigit():
+                ids.append(int(part))
+    return list(dict.fromkeys(ids))
+
+
 class VenteViewSet(viewsets.ModelViewSet):
     queryset = Vente.objects.all().select_related(
         'client', 'client__provenance', 'user_affilie', 'user_affilie__role', 'methode_paiement'
@@ -68,27 +87,37 @@ class VenteViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         
-        # Filtres
+        # Filtres multi-critères
         date_debut = self.request.query_params.get('date_debut')
         date_fin = self.request.query_params.get('date_fin')
-        user_id = self.request.query_params.get('vendeur') or self.request.query_params.get('user_affilie')
-        methode_id = self.request.query_params.get('methode_paiement')
-        client_id = self.request.query_params.get('client')
-        provenance_id = self.request.query_params.get('provenance')
         search = self.request.query_params.get('search') or self.request.query_params.get('q')
+        montant_min = self.request.query_params.get('montant_min')
+        montant_max = self.request.query_params.get('montant_max')
+
+        vendeur_ids = parse_id_list(self.request.query_params, 'vendeur', 'vendeurs', 'user_affilie')
+        methode_ids = parse_id_list(self.request.query_params, 'methode_paiement', 'methodes_paiement')
+        client_ids = parse_id_list(self.request.query_params, 'client', 'clients')
+        provenance_ids = parse_id_list(self.request.query_params, 'provenance', 'provenances')
+        produit_ids = parse_id_list(self.request.query_params, 'produit', 'produits')
 
         if date_debut:
             qs = qs.filter(date__date__gte=date_debut)
         if date_fin:
             qs = qs.filter(date__date__lte=date_fin)
-        if user_id:
-            qs = qs.filter(user_affilie_id=user_id)
-        if methode_id:
-            qs = qs.filter(methode_paiement_id=methode_id)
-        if client_id:
-            qs = qs.filter(client_id=client_id)
-        if provenance_id:
-            qs = qs.filter(client__provenance_id=provenance_id)
+        if vendeur_ids:
+            qs = qs.filter(user_affilie_id__in=vendeur_ids)
+        if methode_ids:
+            qs = qs.filter(methode_paiement_id__in=methode_ids)
+        if client_ids:
+            qs = qs.filter(client_id__in=client_ids)
+        if provenance_ids:
+            qs = qs.filter(client__provenance_id__in=provenance_ids)
+        if produit_ids:
+            qs = qs.filter(commandes__produit_id__in=produit_ids).distinct()
+        if montant_min:
+            qs = qs.filter(total__gte=montant_min)
+        if montant_max:
+            qs = qs.filter(total__lte=montant_max)
         if search:
             search = search.strip()
             qs = qs.filter(
@@ -162,35 +191,48 @@ class DashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        # Filtres Dashboard
-        vendeur_id = request.query_params.get('vendeur') or request.query_params.get('user_affilie')
+        # Filtres Dashboard multi-critères
         date_debut = request.query_params.get('date_debut')
         date_fin = request.query_params.get('date_fin')
-        methode_id = request.query_params.get('methode_paiement')
-        client_id = request.query_params.get('client')
-        provenance_id = request.query_params.get('provenance')
+        montant_min = request.query_params.get('montant_min')
+        montant_max = request.query_params.get('montant_max')
+
+        vendeur_ids = parse_id_list(request.query_params, 'vendeur', 'vendeurs', 'user_affilie')
+        methode_ids = parse_id_list(request.query_params, 'methode_paiement', 'methodes_paiement')
+        client_ids = parse_id_list(request.query_params, 'client', 'clients')
+        provenance_ids = parse_id_list(request.query_params, 'provenance', 'provenances')
+        produit_ids = parse_id_list(request.query_params, 'produit', 'produits')
 
         ventes_qs = Vente.objects.all().prefetch_related('commandes__produit')
         commandes_qs = Commande.objects.select_related('produit', 'vente')
 
-        if vendeur_id:
-            ventes_qs = ventes_qs.filter(user_affilie_id=vendeur_id)
-            commandes_qs = commandes_qs.filter(vente__user_affilie_id=vendeur_id)
+        if vendeur_ids:
+            ventes_qs = ventes_qs.filter(user_affilie_id__in=vendeur_ids)
+            commandes_qs = commandes_qs.filter(vente__user_affilie_id__in=vendeur_ids)
         if date_debut:
             ventes_qs = ventes_qs.filter(date__date__gte=date_debut)
             commandes_qs = commandes_qs.filter(vente__date__date__gte=date_debut)
         if date_fin:
             ventes_qs = ventes_qs.filter(date__date__lte=date_fin)
             commandes_qs = commandes_qs.filter(vente__date__date__lte=date_fin)
-        if methode_id:
-            ventes_qs = ventes_qs.filter(methode_paiement_id=methode_id)
-            commandes_qs = commandes_qs.filter(vente__methode_paiement_id=methode_id)
-        if client_id:
-            ventes_qs = ventes_qs.filter(client_id=client_id)
-            commandes_qs = commandes_qs.filter(vente__client_id=client_id)
-        if provenance_id:
-            ventes_qs = ventes_qs.filter(client__provenance_id=provenance_id)
-            commandes_qs = commandes_qs.filter(vente__client__provenance_id=provenance_id)
+        if methode_ids:
+            ventes_qs = ventes_qs.filter(methode_paiement_id__in=methode_ids)
+            commandes_qs = commandes_qs.filter(vente__methode_paiement_id__in=methode_ids)
+        if client_ids:
+            ventes_qs = ventes_qs.filter(client_id__in=client_ids)
+            commandes_qs = commandes_qs.filter(vente__client_id__in=client_ids)
+        if provenance_ids:
+            ventes_qs = ventes_qs.filter(client__provenance_id__in=provenance_ids)
+            commandes_qs = commandes_qs.filter(vente__client__provenance_id__in=provenance_ids)
+        if produit_ids:
+            ventes_qs = ventes_qs.filter(commandes__produit_id__in=produit_ids).distinct()
+            commandes_qs = commandes_qs.filter(produit_id__in=produit_ids)
+        if montant_min:
+            ventes_qs = ventes_qs.filter(total__gte=montant_min)
+            commandes_qs = commandes_qs.filter(vente__total__gte=montant_min)
+        if montant_max:
+            ventes_qs = ventes_qs.filter(total__lte=montant_max)
+            commandes_qs = commandes_qs.filter(vente__total__lte=montant_max)
 
         # 1. Total KPI
         total_ventes = ventes_qs.count()
@@ -233,8 +275,8 @@ class DashboardView(APIView):
 
         # 5. Classement des vendeurs
         vendeurs_qs = Utilisateur.objects.select_related('role').filter(is_active=True)
-        if vendeur_id:
-            vendeurs_qs = vendeurs_qs.filter(id=vendeur_id)
+        if vendeur_ids:
+            vendeurs_qs = vendeurs_qs.filter(id__in=vendeur_ids)
 
         classement_vendeurs = []
         for v in vendeurs_qs:
@@ -243,12 +285,18 @@ class DashboardView(APIView):
                 user_ventes = user_ventes.filter(date__date__gte=date_debut)
             if date_fin:
                 user_ventes = user_ventes.filter(date__date__lte=date_fin)
-            if methode_id:
-                user_ventes = user_ventes.filter(methode_paiement_id=methode_id)
-            if client_id:
-                user_ventes = user_ventes.filter(client_id=client_id)
-            if provenance_id:
-                user_ventes = user_ventes.filter(client__provenance_id=provenance_id)
+            if methode_ids:
+                user_ventes = user_ventes.filter(methode_paiement_id__in=methode_ids)
+            if client_ids:
+                user_ventes = user_ventes.filter(client_id__in=client_ids)
+            if provenance_ids:
+                user_ventes = user_ventes.filter(client__provenance_id__in=provenance_ids)
+            if produit_ids:
+                user_ventes = user_ventes.filter(commandes__produit_id__in=produit_ids).distinct()
+            if montant_min:
+                user_ventes = user_ventes.filter(total__gte=montant_min)
+            if montant_max:
+                user_ventes = user_ventes.filter(total__lte=montant_max)
 
             nb_v = user_ventes.count()
             ca_v = sum(vente.total for vente in user_ventes)
@@ -281,14 +329,11 @@ class DashboardView(APIView):
 
         eligible_prov_ids = list(mb_config.provenances.values_list('id', flat=True))
 
-        if provenance_id:
-            try:
-                p_id_int = int(provenance_id)
-                if p_id_int in eligible_prov_ids:
-                    mb_commandes = commandes_qs.filter(vente__client__provenance_id=p_id_int)
-                else:
-                    mb_commandes = Commande.objects.none()
-            except (ValueError, TypeError):
+        if provenance_ids:
+            chosen_mb_provs = [pid for pid in provenance_ids if pid in eligible_prov_ids]
+            if chosen_mb_provs:
+                mb_commandes = commandes_qs.filter(vente__client__provenance_id__in=chosen_mb_provs)
+            else:
                 mb_commandes = Commande.objects.none()
         else:
             mb_commandes = commandes_qs.filter(vente__client__provenance_id__in=eligible_prov_ids)

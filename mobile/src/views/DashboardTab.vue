@@ -54,61 +54,23 @@
         </button>
       </div>
 
-      <!-- Filtres Dashboard Mobile Complets -->
+      <!-- Filtres Dashboard Mobile Multi-Critères -->
       <div class="dash-filters-card">
         <div class="filters-card-header">
           <div class="filter-header-left">
             <ion-icon :icon="funnelOutline" class="filter-main-icon" />
-            <span class="filter-main-title">Filtrer les statistiques</span>
-            <span v-if="hasActiveFilters" class="active-badge">Actif</span>
+            <span class="filter-main-title">Filtre Multi-Critères</span>
+            <span v-if="hasActiveFilters" class="active-badge">
+              {{ activeFilterCount }} actif{{ activeFilterCount > 1 ? 's' : '' }}
+            </span>
           </div>
           <button v-if="hasActiveFilters" @click="resetFilters" class="btn-reset-filters">
             <ion-icon :icon="closeCircleOutline" />
-            <span>Effacer</span>
+            <span>Effacer tout</span>
           </button>
         </div>
 
-        <!-- Filtre Vendeur (Admin uniquement) -->
-        <div v-if="isSuperAdmin" class="vendor-filter-row">
-          <select v-model="selectedVendor" @change="loadDashboardData" class="dash-filter-select vendor-select">
-            <option value="">👥 Tous les vendeurs</option>
-            <option v-for="v in vendorsList" :key="v.id" :value="v.id">
-              👤 {{ v.prenom }} {{ v.nom }}
-            </option>
-          </select>
-          <button
-            v-if="user?.id"
-            type="button"
-            @click="toggleMySales"
-            :class="['btn-my-sales', String(selectedVendor) === String(user.id) ? 'active' : '']"
-            title="Mes ventes"
-          >
-            <ion-icon :icon="flashOutline" />
-            <span>Moi</span>
-          </button>
-        </div>
-
-        <!-- Filtres Provenance et Client -->
-        <div class="dash-filter-row">
-          <select v-model="selectedProvenance" @change="loadDashboardData" class="dash-filter-select">
-            <option value="">🌐 Toutes provenances</option>
-            <option v-for="prov in provenances" :key="prov.id" :value="prov.id">{{ prov.label }}</option>
-          </select>
-          <select v-model="selectedClient" @change="loadDashboardData" class="dash-filter-select">
-            <option value="">👤 Tous les clients</option>
-            <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.nom }}</option>
-          </select>
-        </div>
-
-        <!-- Filtre Mode de Paiement -->
-        <div class="dash-filter-row">
-          <select v-model="selectedPaymentMethod" @change="loadDashboardData" class="dash-filter-select">
-            <option value="">💳 Tous les règlements</option>
-            <option v-for="pm in paymentMethods" :key="pm.id" :value="pm.id">{{ pm.label }}</option>
-          </select>
-        </div>
-
-        <!-- Périodes rapides -->
+        <!-- 1. Périodes rapides -->
         <div class="dash-period-pills">
           <button
             v-for="p in periodOptions"
@@ -120,7 +82,7 @@
           </button>
         </div>
 
-        <!-- Dates personnalisées -->
+        <!-- Dates personnalisées si mode custom -->
         <div v-if="activePeriod === 'custom'" class="custom-dates-box">
           <div class="custom-date-item">
             <span class="custom-date-lbl">Du :</span>
@@ -129,6 +91,209 @@
           <div class="custom-date-item">
             <span class="custom-date-lbl">Au :</span>
             <input type="date" v-model="customDateFin" @change="loadDashboardData" class="date-picker-input" />
+          </div>
+        </div>
+
+        <!-- 2. Multi-Sélection Provenances (ex: Facebook ET WhatsApp simultanément) -->
+        <div class="filter-section-group">
+          <div class="section-title-row">
+            <span class="section-label">Provenances</span>
+            <span class="section-hint">
+              {{ selectedProvenances.length === 0 ? 'Toutes' : `${selectedProvenances.length} sélectionnée(s)` }}
+            </span>
+          </div>
+          <div class="chips-scroll-row">
+            <button
+              type="button"
+              :class="['chip-btn', selectedProvenances.length === 0 ? 'active-all' : '']"
+              @click="clearProvenances"
+            >
+              🌐 Toutes
+            </button>
+            <button
+              v-for="prov in provenances"
+              :key="prov.id"
+              type="button"
+              :class="[
+                'chip-btn',
+                selectedProvenances.includes(prov.id) ? 'active' : '',
+                getProvenanceStyleClass(prov.label)
+              ]"
+              @click="toggleProvenance(prov.id)"
+            >
+              <ion-icon
+                v-if="selectedProvenances.includes(prov.id)"
+                :icon="checkmarkCircle"
+                class="chip-check-icon"
+              />
+              <span class="chip-dot" v-else></span>
+              <span>{{ prov.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Multi-Sélection Modes de Règlement -->
+        <div class="filter-section-group">
+          <div class="section-title-row">
+            <span class="section-label">Modes de paiement</span>
+            <span class="section-hint">
+              {{ selectedPaymentMethods.length === 0 ? 'Tous' : `${selectedPaymentMethods.length} sélectionné(s)` }}
+            </span>
+          </div>
+          <div class="chips-scroll-row">
+            <button
+              type="button"
+              :class="['chip-btn', selectedPaymentMethods.length === 0 ? 'active-all' : '']"
+              @click="clearPaymentMethods"
+            >
+              💳 Tous
+            </button>
+            <button
+              v-for="pm in paymentMethods"
+              :key="pm.id"
+              type="button"
+              :class="['chip-btn', selectedPaymentMethods.includes(pm.id) ? 'active' : '']"
+              @click="togglePaymentMethod(pm.id)"
+            >
+              <ion-icon
+                v-if="selectedPaymentMethods.includes(pm.id)"
+                :icon="checkmarkCircle"
+                class="chip-check-icon"
+              />
+              <span class="chip-dot" v-else></span>
+              <span>{{ pm.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4. Bouton pour déplier Autres critères -->
+        <div class="advanced-toggle-row">
+          <button
+            type="button"
+            class="btn-toggle-advanced"
+            @click="isMoreFiltersOpen = !isMoreFiltersOpen"
+          >
+            <div class="toggle-adv-left">
+              <ion-icon :icon="optionsOutline" />
+              <span>Plus de critères (Logiciels, Vendeurs, Montant...)</span>
+            </div>
+            <div class="toggle-adv-right">
+              <span v-if="advancedCriteriaCount > 0" class="adv-badge">{{ advancedCriteriaCount }}</span>
+              <ion-icon :icon="isMoreFiltersOpen ? chevronUpOutline : chevronDownOutline" />
+            </div>
+          </button>
+        </div>
+
+        <!-- Critères avancés (Logiciels, Vendeurs, Clients, Tranche de montant) -->
+        <div v-show="isMoreFiltersOpen" class="advanced-filters-body">
+          <!-- Logiciels / Produits Multi-Sélection -->
+          <div class="adv-filter-block">
+            <div class="section-title-row">
+              <span class="section-label">Logiciels / Produits</span>
+              <span class="section-hint">
+                {{ selectedProducts.length === 0 ? 'Tous' : `${selectedProducts.length} sélectionné(s)` }}
+              </span>
+            </div>
+            <div class="chips-scroll-row">
+              <button
+                type="button"
+                :class="['chip-btn', selectedProducts.length === 0 ? 'active-all' : '']"
+                @click="selectedProducts = []; loadDashboardData()"
+              >
+                📦 Tous logiciels
+              </button>
+              <button
+                v-for="prod in productsList"
+                :key="prod.id"
+                type="button"
+                :class="['chip-btn', selectedProducts.includes(prod.id) ? 'active' : '']"
+                @click="toggleProduct(prod.id)"
+              >
+                <ion-icon
+                  v-if="selectedProducts.includes(prod.id)"
+                  :icon="checkmarkCircle"
+                  class="chip-check-icon"
+                />
+                <span>{{ prod.nom }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Vendeurs Multi-Sélection (SuperAdmin) -->
+          <div v-if="isSuperAdmin" class="adv-filter-block">
+            <div class="section-title-row">
+              <span class="section-label">Vendeurs & Collaborateurs</span>
+              <button
+                v-if="user?.id"
+                type="button"
+                @click="toggleMySales"
+                :class="['btn-my-sales-mini', selectedVendors.includes(Number(user.id)) && selectedVendors.length === 1 ? 'active' : '']"
+              >
+                <ion-icon :icon="flashOutline" />
+                <span>Mes ventes</span>
+              </button>
+            </div>
+            <div class="chips-scroll-row">
+              <button
+                type="button"
+                :class="['chip-btn', selectedVendors.length === 0 ? 'active-all' : '']"
+                @click="selectedVendors = []; loadDashboardData()"
+              >
+                👥 Tous vendeurs
+              </button>
+              <button
+                v-for="v in vendorsList"
+                :key="v.id"
+                type="button"
+                :class="['chip-btn', selectedVendors.includes(v.id) ? 'active' : '']"
+                @click="toggleVendor(v.id)"
+              >
+                <ion-icon
+                  v-if="selectedVendors.includes(v.id)"
+                  :icon="checkmarkCircle"
+                  class="chip-check-icon"
+                />
+                <span>{{ v.prenom }} {{ v.nom }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Client & Tranche de montant -->
+          <div class="adv-filter-grid-2">
+            <div class="adv-input-col">
+              <label class="adv-lbl">Client spécifique</label>
+              <select v-model="selectedClient" @change="loadDashboardData" class="dash-filter-select">
+                <option value="">👤 Tous les clients</option>
+                <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.nom }}</option>
+              </select>
+            </div>
+
+            <div class="adv-input-col">
+              <label class="adv-lbl">Montant min (Ar)</label>
+              <input
+                type="number"
+                v-model="montantMin"
+                @change="loadDashboardData"
+                placeholder="Ex: 50000"
+                class="dash-filter-input"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Tags récapitulatifs des filtres actifs -->
+        <div v-if="activeFilterTags.length > 0" class="active-tags-container">
+          <div class="active-tags-header">Filtres actifs :</div>
+          <div class="active-tags-list">
+            <span
+              v-for="tag in activeFilterTags"
+              :key="tag.id"
+              class="active-tag-chip"
+              @click="tag.remove()"
+            >
+              <span>{{ tag.label }}</span>
+              <ion-icon :icon="closeOutline" class="tag-close-icon" />
+            </span>
           </div>
         </div>
       </div>
@@ -435,6 +600,10 @@ import {
   settingsOutline,
   timeOutline,
   closeOutline,
+  checkmarkCircle,
+  optionsOutline,
+  chevronDownOutline,
+  chevronUpOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
@@ -456,14 +625,21 @@ const clients = ref([])
 const provenances = ref([])
 const paymentMethods = ref([])
 const vendorsList = ref([])
+const productsList = ref([])
 
-const selectedVendor = ref('')
-const selectedProvenance = ref('')
+// Multi-criteria filter states:
+const selectedProvenances = ref([])
+const selectedPaymentMethods = ref([])
+const selectedVendors = ref([])
+const selectedProducts = ref([])
 const selectedClient = ref('')
-const selectedPaymentMethod = ref('')
+const montantMin = ref('')
+const montantMax = ref('')
 const activePeriod = ref('all')
 const customDateDebut = ref('')
 const customDateFin = ref('')
+
+const isMoreFiltersOpen = ref(false)
 
 const periodOptions = [
   { id: 'all', label: 'Tout' },
@@ -476,38 +652,187 @@ const periodOptions = [
 const isSaleModalOpen = ref(false)
 const isClientModalOpen = ref(false)
 
-const hasActiveFilters = computed(() => {
-  return !!(
-    selectedVendor.value ||
-    selectedPaymentMethod.value ||
-    selectedClient.value ||
-    selectedProvenance.value ||
-    activePeriod.value !== 'all' ||
-    customDateDebut.value ||
-    customDateFin.value
-  )
-})
+function getProvenanceStyleClass(label) {
+  if (!label) return ''
+  const l = label.toLowerCase()
+  if (l.includes('facebook')) return 'chip-facebook'
+  if (l.includes('whatsapp')) return 'chip-whatsapp'
+  if (l.includes('tiktok')) return 'chip-tiktok'
+  return ''
+}
+
+function toggleProvenance(id) {
+  const numId = Number(id)
+  const idx = selectedProvenances.value.indexOf(numId)
+  if (idx > -1) {
+    selectedProvenances.value.splice(idx, 1)
+  } else {
+    selectedProvenances.value.push(numId)
+  }
+  loadDashboardData()
+}
+
+function clearProvenances() {
+  selectedProvenances.value = []
+  loadDashboardData()
+}
+
+function togglePaymentMethod(id) {
+  const numId = Number(id)
+  const idx = selectedPaymentMethods.value.indexOf(numId)
+  if (idx > -1) {
+    selectedPaymentMethods.value.splice(idx, 1)
+  } else {
+    selectedPaymentMethods.value.push(numId)
+  }
+  loadDashboardData()
+}
+
+function clearPaymentMethods() {
+  selectedPaymentMethods.value = []
+  loadDashboardData()
+}
+
+function toggleVendor(id) {
+  const numId = Number(id)
+  const idx = selectedVendors.value.indexOf(numId)
+  if (idx > -1) {
+    selectedVendors.value.splice(idx, 1)
+  } else {
+    selectedVendors.value.push(numId)
+  }
+  loadDashboardData()
+}
+
+function toggleMySales() {
+  if (!user.value?.id) return
+  const myId = Number(user.value.id)
+  if (selectedVendors.value.includes(myId) && selectedVendors.value.length === 1) {
+    selectedVendors.value = []
+  } else {
+    selectedVendors.value = [myId]
+  }
+  loadDashboardData()
+}
+
+function toggleProduct(id) {
+  const numId = Number(id)
+  const idx = selectedProducts.value.indexOf(numId)
+  if (idx > -1) {
+    selectedProducts.value.splice(idx, 1)
+  } else {
+    selectedProducts.value.push(numId)
+  }
+  loadDashboardData()
+}
 
 function setPeriod(pId) {
   activePeriod.value = pId
   loadDashboardData()
 }
 
-function toggleMySales() {
-  if (!user.value?.id) return
-  if (String(selectedVendor.value) === String(user.value.id)) {
-    selectedVendor.value = ''
-  } else {
-    selectedVendor.value = user.value.id
+const advancedCriteriaCount = computed(() => {
+  let count = 0
+  if (selectedProducts.value.length > 0) count += selectedProducts.value.length
+  if (selectedVendors.value.length > 0) count += selectedVendors.value.length
+  if (selectedClient.value) count += 1
+  if (montantMin.value || montantMax.value) count += 1
+  return count
+})
+
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (selectedProvenances.value.length > 0) count += selectedProvenances.value.length
+  if (selectedPaymentMethods.value.length > 0) count += selectedPaymentMethods.value.length
+  if (selectedVendors.value.length > 0) count += selectedVendors.value.length
+  if (selectedProducts.value.length > 0) count += selectedProducts.value.length
+  if (selectedClient.value) count += 1
+  if (montantMin.value || montantMax.value) count += 1
+  if (activePeriod.value !== 'all' || customDateDebut.value || customDateFin.value) count += 1
+  return count
+})
+
+const hasActiveFilters = computed(() => activeFilterCount.value > 0)
+
+const activeFilterTags = computed(() => {
+  const tags = []
+  for (const provId of selectedProvenances.value) {
+    const prov = provenances.value.find((p) => p.id === provId)
+    if (prov) {
+      tags.push({
+        id: `prov-${provId}`,
+        label: prov.label,
+        remove: () => toggleProvenance(provId),
+      })
+    }
   }
-  loadDashboardData()
-}
+  for (const pmId of selectedPaymentMethods.value) {
+    const pm = paymentMethods.value.find((m) => m.id === pmId)
+    if (pm) {
+      tags.push({
+        id: `pm-${pmId}`,
+        label: pm.label,
+        remove: () => togglePaymentMethod(pmId),
+      })
+    }
+  }
+  for (const vId of selectedVendors.value) {
+    const v = vendorsList.value.find((u) => u.id === vId)
+    if (v) {
+      tags.push({
+        id: `v-${vId}`,
+        label: `${v.prenom} ${v.nom}`,
+        remove: () => toggleVendor(vId),
+      })
+    }
+  }
+  for (const pId of selectedProducts.value) {
+    const p = productsList.value.find((prod) => prod.id === pId)
+    if (p) {
+      tags.push({
+        id: `prod-${pId}`,
+        label: p.nom,
+        remove: () => toggleProduct(pId),
+      })
+    }
+  }
+  if (selectedClient.value) {
+    const c = clients.value.find((cli) => cli.id === Number(selectedClient.value))
+    tags.push({
+      id: 'client',
+      label: `Client: ${c ? c.nom : selectedClient.value}`,
+      remove: () => {
+        selectedClient.value = ''
+        loadDashboardData()
+      },
+    })
+  }
+  if (montantMin.value || montantMax.value) {
+    let lbl = 'Montant: '
+    if (montantMin.value && montantMax.value) lbl += `${montantMin.value} - ${montantMax.value} Ar`
+    else if (montantMin.value) lbl += `≥ ${montantMin.value} Ar`
+    else lbl += `≤ ${montantMax.value} Ar`
+    tags.push({
+      id: 'montant',
+      label: lbl,
+      remove: () => {
+        montantMin.value = ''
+        montantMax.value = ''
+        loadDashboardData()
+      },
+    })
+  }
+  return tags
+})
 
 function resetFilters() {
-  selectedVendor.value = ''
-  selectedPaymentMethod.value = ''
+  selectedProvenances.value = []
+  selectedPaymentMethods.value = []
+  selectedVendors.value = []
+  selectedProducts.value = []
   selectedClient.value = ''
-  selectedProvenance.value = ''
+  montantMin.value = ''
+  montantMax.value = ''
   activePeriod.value = 'all'
   customDateDebut.value = ''
   customDateFin.value = ''
@@ -528,16 +853,18 @@ function formatDate(isoStr) {
 
 async function loadFilterDependencies() {
   try {
-    const [cRes, pRes, mRes, uRes] = await Promise.all([
+    const [cRes, pRes, mRes, uRes, prodRes] = await Promise.all([
       apiClient.get('/clients/').catch(() => ({ data: [] })),
       apiClient.get('/clients/provenances/').catch(() => ({ data: [] })),
       apiClient.get('/ventes/methodes-paiement/').catch(() => ({ data: [] })),
       apiClient.get('/auth/users/').catch(() => ({ data: [] })),
+      apiClient.get('/produits/').catch(() => ({ data: [] })),
     ])
     clients.value = cRes.data.results || cRes.data || []
     provenances.value = pRes.data.results || pRes.data || []
     paymentMethods.value = (mRes.data.results || mRes.data || []).filter((m) => m.is_active !== false)
     vendorsList.value = uRes.data.results || uRes.data || []
+    productsList.value = prodRes.data.results || prodRes.data || []
   } catch (err) {
     console.error('Erreur dépendances dashboard mobile:', err)
   }
@@ -547,10 +874,27 @@ async function loadDashboardData() {
   loading.value = true
   try {
     const params = {}
-    if (selectedVendor.value) params.vendeur = selectedVendor.value
-    if (selectedPaymentMethod.value) params.methode_paiement = selectedPaymentMethod.value
-    if (selectedClient.value) params.client = selectedClient.value
-    if (selectedProvenance.value) params.provenance = selectedProvenance.value
+    if (selectedProvenances.value.length > 0) {
+      params.provenances = selectedProvenances.value.join(',')
+    }
+    if (selectedPaymentMethods.value.length > 0) {
+      params.methodes_paiement = selectedPaymentMethods.value.join(',')
+    }
+    if (selectedVendors.value.length > 0) {
+      params.vendeurs = selectedVendors.value.join(',')
+    }
+    if (selectedProducts.value.length > 0) {
+      params.produits = selectedProducts.value.join(',')
+    }
+    if (selectedClient.value) {
+      params.client = selectedClient.value
+    }
+    if (montantMin.value) {
+      params.montant_min = montantMin.value
+    }
+    if (montantMax.value) {
+      params.montant_max = montantMax.value
+    }
 
     const today = new Date()
     const pad = (n) => String(n).padStart(2, '0')
@@ -877,51 +1221,6 @@ onIonViewWillEnter(() => {
   cursor: pointer;
 }
 
-.vendor-filter-row {
-  display: flex;
-  gap: 8px;
-}
-
-.vendor-select {
-  flex: 1;
-}
-
-.btn-my-sales {
-  background: rgba(56, 189, 248, 0.12);
-  color: #38BDF8;
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  border-radius: 10px;
-  padding: 0 12px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.btn-my-sales.active {
-  background: #0284C7;
-  color: #FFFFFF;
-}
-
-.dash-filter-row {
-  display: flex;
-  gap: 8px;
-}
-
-.dash-filter-select {
-  flex: 1;
-  background: #0B1120;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 9px 10px;
-  color: #FFFFFF;
-  font-size: 0.8rem;
-  outline: none;
-}
-
 .dash-period-pills {
   display: flex;
   gap: 6px;
@@ -978,6 +1277,274 @@ onIonViewWillEnter(() => {
   font-size: 0.78rem;
   outline: none;
   color-scheme: dark;
+}
+
+/* Groupes Multi-Sélection (Provenances, Règlement) */
+.filter-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.section-hint {
+  font-size: 0.68rem;
+  color: #14B8A6;
+  font-weight: 600;
+}
+
+.chips-scroll-row {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 2px 0 4px 0;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.chips-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #CBD5E1;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.chip-btn:active {
+  transform: scale(0.96);
+}
+
+.chip-btn.active {
+  background: #0D9488;
+  color: #FFFFFF;
+  border-color: #14B8A6;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.35);
+}
+
+.chip-btn.active-all {
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.chip-facebook.active {
+  background: #1877F2;
+  border-color: #3B82F6;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.4);
+}
+
+.chip-whatsapp.active {
+  background: #16A34A;
+  border-color: #22C55E;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.4);
+}
+
+.chip-tiktok.active {
+  background: #BE185D;
+  border-color: #EC4899;
+  box-shadow: 0 2px 8px rgba(190, 24, 93, 0.4);
+}
+
+.chip-check-icon {
+  font-size: 13px;
+  color: #FFFFFF;
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Bouton pour afficher/masquer les filtres avancés */
+.advanced-toggle-row {
+  margin-top: 4px;
+}
+
+.btn-toggle-advanced {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #94A3B8;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-toggle-advanced:hover, .btn-toggle-advanced:active {
+  background: rgba(255, 255, 255, 0.06);
+  color: #E2E8F0;
+}
+
+.toggle-adv-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle-adv-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-badge {
+  background: #0284C7;
+  color: #FFFFFF;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.advanced-filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(11, 17, 32, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+}
+
+.adv-filter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn-my-sales-mini {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38BDF8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.btn-my-sales-mini.active {
+  background: #0284C7;
+  color: #FFFFFF;
+}
+
+.adv-filter-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.adv-input-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.adv-lbl {
+  font-size: 0.68rem;
+  color: #94A3B8;
+  font-weight: 600;
+}
+
+.dash-filter-select {
+  width: 100%;
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 7px 10px;
+  color: #FFFFFF;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.dash-filter-input {
+  width: 100%;
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 7px 10px;
+  color: #FFFFFF;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+/* Tags actifs récapitulatifs */
+.active-tags-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.active-tags-header {
+  font-size: 0.68rem;
+  color: #64748B;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.active-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.active-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(13, 148, 136, 0.15);
+  border: 1px solid rgba(13, 148, 136, 0.35);
+  color: #5EEAD4;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tag-close-icon {
+  font-size: 12px;
+  color: #F87171;
 }
 
 /* KPIS */
