@@ -127,6 +127,21 @@ class VenteViewSet(viewsets.ModelViewSet):
                 Q(id__icontains=search)
             )
 
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            allowed = [
+                'date', '-date',
+                'total', '-total',
+                'id', '-id',
+                'client__nom', '-client__nom',
+                'client__provenance__label', '-client__provenance__label',
+                'user_affilie__nom', '-user_affilie__nom',
+                'user_affilie__prenom', '-user_affilie__prenom',
+                'methode_paiement__label', '-methode_paiement__label'
+            ]
+            if ordering in allowed:
+                return qs.order_by(ordering)
+
         return qs.order_by('-date')
 
     def create(self, request, *args, **kwargs):

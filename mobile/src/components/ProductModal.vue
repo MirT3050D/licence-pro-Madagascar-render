@@ -80,7 +80,7 @@
       <button
         type="button"
         @click="saveProduct"
-        :disabled="isSubmitting || !form.nom.trim() || !form.prix_vente"
+        :disabled="isSubmitting || !form.nom.trim() || form.prix_vente === null || form.prix_vente === '' || form.prix_vente < 0"
         class="btn-submit"
       >
         <span v-if="isSubmitting">Enregistrement...</span>
@@ -165,29 +165,17 @@ async function saveProduct() {
 
   try {
     if (isEditing.value) {
-      // 1. Update basic product info
+      // Atomic product update
       const res = await apiClient.patch(`/produits/${props.productData.id}/`, {
         nom: form.value.nom.trim(),
         description: form.value.description,
         prix_achat: form.value.prix_achat,
+        prix_vente: form.value.prix_vente,
+        prix_initial: form.value.prix_vente,
+        description_activation: form.value.description_activation,
         image: form.value.image,
         lien_achat: form.value.lien_achat,
       })
-
-      // 2. If selling price changed, call changer-prix
-      const currentPrice = props.productData.prix_actif ? Number(props.productData.prix_actif) : null
-      if (form.value.prix_vente && form.value.prix_vente !== currentPrice) {
-        await apiClient.post(`/produits/${props.productData.id}/changer-prix/`, {
-          prix: form.value.prix_vente,
-        })
-      }
-
-      // 3. Update activation guide
-      if (form.value.description_activation !== undefined) {
-        await apiClient.post(`/produits/${props.productData.id}/activation/`, {
-          description_activation: form.value.description_activation,
-        })
-      }
 
       emit('saved', res.data)
     } else {
@@ -197,6 +185,7 @@ async function saveProduct() {
         description: form.value.description,
         prix_achat: form.value.prix_achat,
         prix_initial: form.value.prix_vente,
+        prix_vente: form.value.prix_vente,
         description_activation: form.value.description_activation,
         image: form.value.image,
         lien_achat: form.value.lien_achat,
@@ -206,10 +195,18 @@ async function saveProduct() {
 
     emit('close')
   } catch (err) {
-    errorMessage.value =
-      err.response?.data?.error ||
-      err.response?.data?.detail ||
-      "Une erreur est survenue lors de l'enregistrement du produit."
+    const errData = err.response?.data
+    if (typeof errData === 'object' && errData !== null) {
+      const messages = Object.entries(errData)
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+        .join(' | ')
+      errorMessage.value = messages || "Une erreur est survenue lors de l'enregistrement du produit."
+    } else {
+      errorMessage.value =
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        "Une erreur est survenue lors de l'enregistrement du produit."
+    }
   } finally {
     isSubmitting.value = false
   }

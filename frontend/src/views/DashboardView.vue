@@ -116,16 +116,21 @@
           </div>
         </div>
 
-        <!-- 3. MODE DE PAIEMENT -->
+        <!-- 3. MODE DE PAIEMENT (MULTI-SÉLECTION) -->
         <div class="filter-group-dash">
           <label class="filter-label-dash">
             <CreditCard :size="14" class="text-primary" />
             <span>Paiement</span>
           </label>
-          <select v-model="filters.methode_paiement" @change="loadDashboard" class="form-select select-dash">
-            <option value="">Tous règlements</option>
-            <option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.label }}</option>
-          </select>
+          <MultiSelectDropdown
+            v-model="filters.methodes_paiement"
+            :options="paymentMethodOptions"
+            label="Paiements"
+            placeholder="💳 Tous règlements"
+            :icon="CreditCard"
+            compact
+            @change="loadDashboard"
+          />
         </div>
 
         <!-- 4. CLIENT -->
@@ -140,16 +145,21 @@
           </select>
         </div>
 
-        <!-- 5. PROVENANCE -->
+        <!-- 5. PROVENANCE (MULTI-SÉLECTION) -->
         <div class="filter-group-dash">
           <label class="filter-label-dash">
             <Globe :size="14" class="text-primary" />
             <span>Provenance</span>
           </label>
-          <select v-model="filters.provenance" @change="loadDashboard" class="form-select select-dash">
-            <option value="">Toutes provenances</option>
-            <option v-for="p in provenancesList" :key="p.id" :value="p.id">{{ p.label }}</option>
-          </select>
+          <MultiSelectDropdown
+            v-model="filters.provenances"
+            :options="provenanceOptions"
+            label="Provenances"
+            placeholder="🌐 Toutes provenances"
+            :icon="Globe"
+            compact
+            @change="loadDashboard"
+          />
         </div>
 
         <!-- Reset Button -->
@@ -161,23 +171,73 @@
         </div>
       </div>
 
+      <!-- Quick Provenance Chips Bar on Dashboard -->
+      <div v-if="provenancesList.length > 0" class="dash-provenance-chips-bar">
+        <div class="quick-bar-label">
+          <Globe :size="13" class="text-primary" />
+          <span>Canaux rapides :</span>
+        </div>
+        <div class="quick-chips-scroll custom-scroll">
+          <button
+            type="button"
+            class="prov-chip-btn"
+            :class="{ 'active-all': filters.provenances.length === 0 }"
+            @click="clearProvenancesFilter"
+            title="Toutes les provenances"
+          >
+            🌐 Toutes
+          </button>
+          <button
+            v-for="prov in provenancesList"
+            :key="prov.id"
+            type="button"
+            class="prov-chip-btn"
+            :class="{ active: filters.provenances.includes(prov.id) }"
+            :style="getProvenanceChipStyle(prov)"
+            @click="toggleProvenanceFilter(prov.id)"
+          >
+            <span class="chip-dot" :style="{ backgroundColor: getProvenanceStyle(prov.label).dot }"></span>
+            <span>{{ prov.label }}</span>
+            <Check v-if="filters.provenances.includes(prov.id)" :size="12" class="chip-check" />
+          </button>
+        </div>
+      </div>
+
       <!-- Bandeau récapitulatif des filtres appliqués -->
       <div v-if="hasActiveFilters" class="dash-active-filters-bar">
         <span class="text-xs text-muted">Données actuellement filtrées par :</span>
         <span v-if="activeVendorName" class="filter-pill">
           Vendeur : <strong>{{ activeVendorName }}</strong>
+          <button type="button" @click="filters.vendeur = ''; loadDashboard()" class="pill-remove-btn"><X :size="11" /></button>
         </span>
         <span v-if="activeClientName" class="filter-pill">
           Client : <strong>{{ activeClientName }}</strong>
+          <button type="button" @click="filters.client = ''; loadDashboard()" class="pill-remove-btn"><X :size="11" /></button>
         </span>
-        <span v-if="activeProvenanceName" class="filter-pill">
-          Provenance : <strong>{{ activeProvenanceName }}</strong>
+        <span
+          v-for="pId in filters.provenances"
+          :key="'dp-' + pId"
+          class="filter-pill"
+          :style="{
+            borderColor: getProvenanceStyle(getProvenanceLabel(pId)).border,
+            color: getProvenanceStyle(getProvenanceLabel(pId)).text
+          }"
+        >
+          <span class="pill-dot" :style="{ backgroundColor: getProvenanceStyle(getProvenanceLabel(pId)).dot }"></span>
+          Provenance : <strong>{{ getProvenanceLabel(pId) }}</strong>
+          <button type="button" @click="removeProvenanceFilter(pId)" class="pill-remove-btn"><X :size="11" /></button>
+        </span>
+        <span
+          v-for="mId in filters.methodes_paiement"
+          :key="'dm-' + mId"
+          class="filter-pill"
+        >
+          Règlement : <strong>{{ getPaymentMethodLabel(mId) }}</strong>
+          <button type="button" @click="removePaymentFilter(mId)" class="pill-remove-btn"><X :size="11" /></button>
         </span>
         <span v-if="filters.periode !== 'all'" class="filter-pill">
           Période : <strong>{{ activePeriodLabel }}</strong>
-        </span>
-        <span v-if="activePaymentName" class="filter-pill">
-          Règlement : <strong>{{ activePaymentName }}</strong>
+          <button type="button" @click="setPeriodPreset('all')" class="pill-remove-btn"><X :size="11" /></button>
         </span>
       </div>
     </div>
@@ -657,6 +717,7 @@ import {
   Target,
   Megaphone,
   Sliders,
+  Check,
   X
 } from '@lucide/vue'
 import {
@@ -674,6 +735,8 @@ import {
 import { Line, Doughnut } from 'vue-chartjs'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
+import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
+import { getProvenanceStyle } from '../utils/provenanceHelper'
 
 const { user, isSuperAdmin } = useAuth()
 
@@ -701,9 +764,9 @@ const filters = ref({
   periode: 'all',
   date_debut: '',
   date_fin: '',
-  methode_paiement: '',
+  methodes_paiement: [],
   client: '',
-  provenance: '',
+  provenances: [],
 })
 
 const data = ref({
@@ -718,9 +781,9 @@ const hasActiveFilters = computed(() => {
   return !!(
     filters.value.vendeur ||
     filters.value.periode !== 'all' ||
-    filters.value.methode_paiement ||
+    filters.value.methodes_paiement?.length ||
     filters.value.client ||
-    filters.value.provenance
+    filters.value.provenances?.length
   )
 })
 
@@ -730,23 +793,94 @@ const activeVendorName = computed(() => {
   return v ? `${v.prenom} ${v.nom}` : ''
 })
 
-const activePaymentName = computed(() => {
-  if (!filters.value.methode_paiement) return ''
-  const m = paymentMethods.value.find(item => String(item.id) === String(filters.value.methode_paiement))
-  return m ? m.label : ''
-})
-
 const activeClientName = computed(() => {
   if (!filters.value.client) return ''
   const c = clientsList.value.find(item => String(item.id) === String(filters.value.client))
   return c ? c.nom : ''
 })
 
-const activeProvenanceName = computed(() => {
-  if (!filters.value.provenance) return ''
-  const p = provenancesList.value.find(item => String(item.id) === String(filters.value.provenance))
-  return p ? p.label : ''
+// Options formatées pour MultiSelectDropdown
+const provenanceOptions = computed(() => {
+  return provenancesList.value.map(p => {
+    const st = getProvenanceStyle(p.label)
+    return {
+      id: p.id,
+      label: p.label,
+      count: p.clients_count,
+      color: {
+        dot: st.dot,
+        text: st.text,
+        bg: st.bg
+      }
+    }
+  })
 })
+
+const paymentMethodOptions = computed(() => {
+  return paymentMethods.value.map(m => ({
+    id: m.id,
+    label: m.label,
+    color: {
+      dot: '#10b981',
+      text: '#10b981'
+    }
+  }))
+})
+
+function toggleProvenanceFilter(id) {
+  const idx = filters.value.provenances.indexOf(id)
+  if (idx >= 0) {
+    filters.value.provenances.splice(idx, 1)
+  } else {
+    filters.value.provenances.push(id)
+  }
+  loadDashboard()
+}
+
+function clearProvenancesFilter() {
+  filters.value.provenances = []
+  loadDashboard()
+}
+
+function removeProvenanceFilter(id) {
+  const idx = filters.value.provenances.indexOf(id)
+  if (idx >= 0) {
+    filters.value.provenances.splice(idx, 1)
+    loadDashboard()
+  }
+}
+
+function removePaymentFilter(id) {
+  const idx = filters.value.methodes_paiement.indexOf(id)
+  if (idx >= 0) {
+    filters.value.methodes_paiement.splice(idx, 1)
+    loadDashboard()
+  }
+}
+
+function getProvenanceLabel(id) {
+  const p = provenancesList.value.find(item => String(item.id) === String(id))
+  return p ? p.label : ''
+}
+
+function getPaymentMethodLabel(id) {
+  const m = paymentMethods.value.find(item => String(item.id) === String(id))
+  return m ? m.label : ''
+}
+
+function getProvenanceChipStyle(prov) {
+  const isSelected = filters.value.provenances.includes(prov.id)
+  const st = getProvenanceStyle(prov.label)
+  if (isSelected) {
+    return {
+      backgroundColor: st.bg,
+      borderColor: st.border,
+      color: st.text,
+      boxShadow: `0 0 10px ${st.border}`
+    }
+  }
+  return {}
+}
 
 const activePeriodLabel = computed(() => {
   switch (filters.value.periode) {
@@ -872,9 +1006,9 @@ function resetFilters() {
     periode: 'all',
     date_debut: '',
     date_fin: '',
-    methode_paiement: '',
+    methodes_paiement: [],
     client: '',
-    provenance: '',
+    provenances: [],
   }
   loadDashboard()
 }
@@ -903,9 +1037,14 @@ async function loadDashboard() {
     if (filters.value.vendeur) params.vendeur = filters.value.vendeur
     if (filters.value.date_debut) params.date_debut = filters.value.date_debut
     if (filters.value.date_fin) params.date_fin = filters.value.date_fin
-    if (filters.value.methode_paiement) params.methode_paiement = filters.value.methode_paiement
     if (filters.value.client) params.client = filters.value.client
-    if (filters.value.provenance) params.provenance = filters.value.provenance
+
+    if (filters.value.provenances?.length) {
+      params.provenances = filters.value.provenances.join(',')
+    }
+    if (filters.value.methodes_paiement?.length) {
+      params.methodes_paiement = filters.value.methodes_paiement.join(',')
+    }
 
     const res = await apiClient.get('/ventes/dashboard/', { params })
     data.value = res.data
@@ -1101,6 +1240,81 @@ onMounted(async () => {
   margin-left: auto;
 }
 
+/* Quick Provenance Chips Bar on Dashboard */
+.dash-provenance-chips-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-x: auto;
+}
+
+.quick-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.quick-chips-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.prov-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.prov-chip-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.prov-chip-btn.active-all {
+  background: var(--primary-light, rgba(0, 210, 255, 0.15));
+  border-color: var(--primary, #00d2ff);
+  color: var(--primary, #00d2ff);
+}
+
+.prov-chip-btn.active {
+  font-weight: 700;
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chip-check {
+  margin-left: -0.1rem;
+}
+
 .dash-active-filters-bar {
   display: flex;
   align-items: center;
@@ -1112,6 +1326,9 @@ onMounted(async () => {
 }
 
 .filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   background: rgba(0, 210, 255, 0.08);
   border: 1px solid rgba(0, 210, 255, 0.25);
   color: var(--text-secondary);
@@ -1122,6 +1339,30 @@ onMounted(async () => {
 
 .filter-pill strong {
   color: var(--primary);
+}
+
+.pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.pill-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+
+.pill-remove-btn:hover {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.2);
 }
 
 /* KPI GRID */

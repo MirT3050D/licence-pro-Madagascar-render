@@ -55,12 +55,14 @@
             placeholder="Numéro WhatsApp / Tél"
             class="mobile-input"
           />
-          <select v-model="newClientForm.id_provenance" class="mobile-select">
-            <option value="">Provenance (optionnel)</option>
-            <option v-for="prov in provenances" :key="prov.id" :value="prov.id">
-              {{ prov.label }}
-            </option>
-          </select>
+          <SearchableSelect
+            v-model="newClientForm.id_provenance"
+            :options="provenanceOptions"
+            title="Provenance du client"
+            placeholder="Provenance (optionnel)"
+            search-placeholder="Rechercher provenance..."
+            allow-clear
+          />
           <button
             type="button"
             @click="createQuickClient"
@@ -73,12 +75,13 @@
 
         <!-- Sélection existant -->
         <div v-else>
-          <select v-model="selectedClientId" class="mobile-select">
-            <option value="">-- Sélectionnez un client --</option>
-            <option v-for="c in clients" :key="c.id" :value="c.id">
-              {{ c.nom }} {{ c.numero ? `(${c.numero})` : '' }}
-            </option>
-          </select>
+          <SearchableSelect
+            v-model="selectedClientId"
+            :options="clientOptions"
+            title="Choisir un client"
+            placeholder="-- Sélectionnez un client --"
+            search-placeholder="Rechercher nom, numéro..."
+          />
         </div>
       </div>
 
@@ -91,16 +94,14 @@
 
         <div v-for="(item, idx) in orderArticles" :key="idx" class="article-row">
           <div class="article-main">
-            <select
+            <SearchableSelect
               v-model="item.produit_id"
+              :options="productOptions"
+              title="Choisir un produit"
+              placeholder="Sélectionner un produit..."
+              search-placeholder="Rechercher logiciel, licence..."
               @change="onProductSelect(item)"
-              class="mobile-select product-select"
-            >
-              <option value="">Sélectionner un produit...</option>
-              <option v-for="p in products" :key="p.id" :value="p.id">
-                {{ p.nom }} - {{ formatPrice(p.prix_actif ?? p.prix_achat) }}
-              </option>
-            </select>
+            />
 
             <div class="article-controls">
               <!-- Stepper Quantité -->
@@ -216,6 +217,7 @@ import {
 import { closeOutline, addOutline, trashOutline, refreshOutline } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useSaleDraft } from '../composables/useSaleDraft'
+import SearchableSelect from './SearchableSelect.vue'
 
 const props = defineProps({
   isOpen: Boolean,
@@ -232,6 +234,30 @@ const clients = ref([])
 const products = ref([])
 const paymentMethods = ref([])
 const provenances = ref([])
+
+const clientOptions = computed(() => {
+  return (clients.value || []).map((c) => ({
+    id: c.id,
+    label: c.nom,
+    subtitle: c.numero ? c.numero : (c.email || ''),
+  }))
+})
+
+const productOptions = computed(() => {
+  return (products.value || []).map((p) => ({
+    id: p.id,
+    label: p.nom,
+    subtitle: formatPrice(p.prix_actif ?? p.prix_achat),
+  }))
+})
+
+const provenanceOptions = computed(() => {
+  return (provenances.value || []).map((prov) => ({
+    id: prov.id,
+    label: prov.label,
+    subtitle: '',
+  }))
+})
 
 function getLocalDateTimeString(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0')

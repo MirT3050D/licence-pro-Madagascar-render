@@ -36,7 +36,7 @@
         </div>
       </div>
 
-      <!-- 2. FILTRES COMPLÉMENTAIRES : RECHERCHE, PÉRIODE, MODE DE PAIEMENT, NOUVELLE VENTE -->
+      <!-- 2. FILTRES COMPLÉMENTAIRES MULTI-CRITÈRES -->
       <div class="secondary-filters-row">
         <!-- Recherche textuelle -->
         <div class="search-box">
@@ -108,11 +108,25 @@
           />
         </div>
 
-        <!-- Mode de paiement -->
-        <select v-model="filters.methode_paiement" @change="fetchSales" class="form-select filter-select">
-          <option value="">Tous les règlements</option>
-          <option v-for="m in paymentMethods" :key="m.id" :value="m.id">{{ m.label }}</option>
-        </select>
+        <!-- Multi-Sélection Provenances (ex: Facebook ET WhatsApp simultanément) -->
+        <MultiSelectDropdown
+          v-model="filters.provenances"
+          :options="provenanceOptions"
+          label="Provenances"
+          placeholder="🌐 Toutes provenances"
+          :icon="Globe"
+          @change="fetchSales"
+        />
+
+        <!-- Multi-Sélection Modes de Paiement -->
+        <MultiSelectDropdown
+          v-model="filters.methodes_paiement"
+          :options="paymentMethodOptions"
+          label="Règlements"
+          placeholder="💳 Tous règlements"
+          :icon="CreditCard"
+          @change="fetchSales"
+        />
 
         <!-- Filtre Client -->
         <select v-model="filters.client" @change="fetchSales" class="form-select filter-select">
@@ -120,18 +134,32 @@
           <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.nom }}</option>
         </select>
 
-        <!-- Filtre Provenance -->
-        <select v-model="filters.provenance" @change="fetchSales" class="form-select filter-select">
-          <option value="">🌐 Toutes provenances</option>
-          <option v-for="prov in provenancesList" :key="prov.id" :value="prov.id">{{ prov.label }}</option>
-        </select>
+        <!-- Filtre Montant Min / Max -->
+        <div class="amount-filter-box" title="Filtrer par montant de transaction">
+          <DollarSign :size="14" class="amount-icon text-muted" />
+          <input
+            v-model="filters.montant_min"
+            @change="fetchSales"
+            type="number"
+            class="form-input amount-mini-input"
+            placeholder="Min (Ar)"
+          />
+          <span class="date-sep">-</span>
+          <input
+            v-model="filters.montant_max"
+            @change="fetchSales"
+            type="number"
+            class="form-input amount-mini-input"
+            placeholder="Max (Ar)"
+          />
+        </div>
 
         <!-- Bouton Réinitialiser -->
         <button
           v-if="hasActiveFilters"
           type="button"
           @click="resetFilters"
-          class="btn btn-secondary btn-sm"
+          class="btn btn-secondary btn-sm btn-reset-filters"
           title="Réinitialiser tous les filtres"
         >
           <RotateCcw :size="14" />
@@ -149,28 +177,129 @@
         </div>
       </div>
 
-      <!-- 3. BANDEAU RÉSUMÉ DES RÉSULTATS FILTRÉS -->
+      <!-- 3. CHIPS RAPIDES DE PROVENANCE (Toggles multi-sélection en 1 clic) -->
+      <div v-if="provenancesList.length > 0" class="provenance-quick-bar">
+        <div class="quick-bar-label">
+          <Globe :size="13" class="text-primary" />
+          <span>Provenances :</span>
+        </div>
+        <div class="quick-chips-scroll custom-scroll">
+          <button
+            type="button"
+            class="prov-chip-btn"
+            :class="{ 'active-all': filters.provenances.length === 0 }"
+            @click="clearProvenancesFilter"
+            title="Afficher toutes les provenances"
+          >
+            🌐 Toutes ({{ sales.length }})
+          </button>
+          <button
+            v-for="prov in provenancesList"
+            :key="prov.id"
+            type="button"
+            class="prov-chip-btn"
+            :class="{ active: filters.provenances.includes(prov.id) }"
+            :style="getProvenanceChipStyle(prov)"
+            @click="toggleProvenanceFilter(prov.id)"
+          >
+            <span class="chip-dot" :style="{ backgroundColor: getProvenanceStyle(prov.label).dot }"></span>
+            <span>{{ prov.label }}</span>
+            <span v-if="getProvenanceSalesCount(prov.id)" class="chip-count">
+              {{ getProvenanceSalesCount(prov.id) }}
+            </span>
+            <Check v-if="filters.provenances.includes(prov.id)" :size="12" class="chip-check" />
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. BANDEAU DE TRI MULTICRITÈRE ET RÉCAPITULATIF -->
       <div class="filter-results-summary">
         <div class="summary-left">
           <span class="results-count">
-            <strong>{{ sales.length }}</strong> vente(s) affichée(s)
+            <strong>{{ sortedSales.length }}</strong> vente(s) affichée(s)
           </span>
-          <span v-if="activeFilterVendorName" class="active-filter-pill">
-            Vendeur : <strong>{{ activeFilterVendorName }}</strong>
-          </span>
-          <span v-if="activeClientName" class="active-filter-pill">
-            Client : <strong>{{ activeClientName }}</strong>
-          </span>
-          <span v-if="activeProvenanceName" class="active-filter-pill">
-            Provenance : <strong>{{ activeProvenanceName }}</strong>
-          </span>
-          <span v-if="filters.search" class="active-filter-pill">
-            Recherche : <strong>"{{ filters.search }}"</strong>
-          </span>
-          <span v-if="activePeriodPreset !== 'all'" class="active-filter-pill">
-            Période : <strong>{{ activePeriodLabel }}</strong>
-          </span>
+
+          <!-- Sélecteur de Tri Rapide -->
+          <div class="sort-selector-wrapper">
+            <SlidersHorizontal :size="13" class="text-primary" />
+            <span class="sort-label text-xs font-semibold text-muted">Trier par :</span>
+            <select v-model="sortSelectValue" @change="onSortSelectChange" class="form-select sort-select-compact">
+              <option value="date-desc">🕒 Date (Plus récentes)</option>
+              <option value="date-asc">🕒 Date (Plus anciennes)</option>
+              <option value="total-desc">💰 Montant (Plus élevé)</option>
+              <option value="total-asc">💰 Montant (Plus bas)</option>
+              <option value="client-asc">👤 Client (A → Z)</option>
+              <option value="client-desc">👤 Client (Z → A)</option>
+              <option value="vendeur-asc">👥 Vendeur (A → Z)</option>
+              <option value="vendeur-desc">👥 Vendeur (Z → A)</option>
+              <option value="reglement-asc">💳 Règlement (A → Z)</option>
+              <option value="provenance-asc">🌐 Provenance (A → Z)</option>
+              <option value="id-desc"># Réf (Décroissant)</option>
+              <option value="id-asc"># Réf (Croissant)</option>
+            </select>
+          </div>
+
+          <!-- Pilules des filtres actifs -->
+          <div class="active-filter-pills-list">
+            <!-- Vendeur -->
+            <span v-if="activeFilterVendorName" class="active-filter-pill">
+              <span>Vendeur : <strong>{{ activeFilterVendorName }}</strong></span>
+              <button type="button" @click="filters.vendeur = ''; fetchSales()" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
+            <!-- Client -->
+            <span v-if="activeClientName" class="active-filter-pill">
+              <span>Client : <strong>{{ activeClientName }}</strong></span>
+              <button type="button" @click="filters.client = ''; fetchSales()" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
+            <!-- Multi Provenances -->
+            <span
+              v-for="pId in filters.provenances"
+              :key="'pill-p-' + pId"
+              class="active-filter-pill pill-provenance"
+              :style="{
+                borderColor: getProvenanceStyle(getProvenanceLabel(pId)).border,
+                color: getProvenanceStyle(getProvenanceLabel(pId)).text
+              }"
+            >
+              <span class="pill-dot" :style="{ backgroundColor: getProvenanceStyle(getProvenanceLabel(pId)).dot }"></span>
+              <span>Provenance : <strong>{{ getProvenanceLabel(pId) }}</strong></span>
+              <button type="button" @click="removeProvenanceFilter(pId)" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
+            <!-- Multi Règlements -->
+            <span
+              v-for="mId in filters.methodes_paiement"
+              :key="'pill-m-' + mId"
+              class="active-filter-pill pill-payment"
+            >
+              <CreditCard :size="11" class="text-primary" />
+              <span>Règlement : <strong>{{ getPaymentMethodLabel(mId) }}</strong></span>
+              <button type="button" @click="removePaymentFilter(mId)" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
+            <!-- Montant range -->
+            <span v-if="filters.montant_min || filters.montant_max" class="active-filter-pill">
+              <DollarSign :size="11" class="text-emerald" />
+              <span>Montant : <strong>{{ formatAmountRange(filters.montant_min, filters.montant_max) }}</strong></span>
+              <button type="button" @click="filters.montant_min = ''; filters.montant_max = ''; fetchSales()" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
+            <!-- Recherche -->
+            <span v-if="filters.search" class="active-filter-pill">
+              <span>Recherche : <strong>"{{ filters.search }}"</strong></span>
+              <button type="button" @click="clearSearch" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
+            <!-- Période -->
+            <span v-if="activePeriodPreset !== 'all'" class="active-filter-pill">
+              <span>Période : <strong>{{ activePeriodLabel }}</strong></span>
+              <button type="button" @click="setPeriodPreset('all')" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+          </div>
         </div>
+
         <div class="summary-right">
           <span class="total-label">Total encaissé :</span>
           <span class="total-val text-emerald">{{ formatPrice(filteredSalesTotal) }}</span>
@@ -184,18 +313,81 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th># Réf</th>
-              <th>Date & Heure</th>
-              <th>Client</th>
-              <th>Vendeur / Affilié</th>
-              <th>Règlement</th>
-              <th>Articles</th>
-              <th>Total</th>
+              <th class="sortable-th" @click="toggleSort('id')" title="Cliquer pour trier par Référence">
+                <div class="th-content">
+                  <span># Réf</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'id' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'id' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
+              <th class="sortable-th" @click="toggleSort('date')" title="Cliquer pour trier par Date">
+                <div class="th-content">
+                  <span>Date & Heure</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'date' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'date' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
+              <th class="sortable-th" @click="toggleSort('client')" title="Cliquer pour trier par Nom de Client">
+                <div class="th-content">
+                  <span>Client & Provenance</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'client' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'client' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
+              <th class="sortable-th" @click="toggleSort('vendeur')" title="Cliquer pour trier par Vendeur">
+                <div class="th-content">
+                  <span>Vendeur / Affilié</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'vendeur' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'vendeur' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
+              <th class="sortable-th" @click="toggleSort('reglement')" title="Cliquer pour trier par Mode de Règlement">
+                <div class="th-content">
+                  <span>Règlement</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'reglement' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'reglement' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
+              <th class="sortable-th" @click="toggleSort('articles')" title="Cliquer pour trier par Nombre d'Articles">
+                <div class="th-content">
+                  <span>Articles</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'articles' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'articles' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
+              <th class="sortable-th" @click="toggleSort('total')" title="Cliquer pour trier par Montant Total">
+                <div class="th-content">
+                  <span>Total</span>
+                  <span class="th-sort-icon">
+                    <ArrowUp v-if="currentSort.field === 'total' && currentSort.direction === 'asc'" :size="13" class="sort-active" />
+                    <ArrowDown v-else-if="currentSort.field === 'total' && currentSort.direction === 'desc'" :size="13" class="sort-active" />
+                    <ArrowUpDown v-else :size="12" class="sort-idle" />
+                  </span>
+                </div>
+              </th>
               <th style="text-align: right;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="vente in sales" :key="vente.id">
+            <tr v-for="vente in sortedSales" :key="vente.id">
               <td>
                 <span class="font-mono font-bold text-primary">#{{ vente.id }}</span>
               </td>
@@ -206,7 +398,15 @@
                 <div class="font-bold">{{ vente.client?.nom }}</div>
                 <div class="text-xs text-muted flex items-center gap-1.5 mt-0.5">
                   <span>{{ vente.client?.numero || 'Sans numéro' }}</span>
-                  <span v-if="vente.client?.provenance?.label" class="badge badge-secondary badge-xs">
+                  <span
+                    v-if="vente.client?.provenance?.label"
+                    class="badge badge-xs prov-badge-table"
+                    :style="{
+                      backgroundColor: getProvenanceStyle(vente.client.provenance.label).bg,
+                      color: getProvenanceStyle(vente.client.provenance.label).text,
+                      borderColor: getProvenanceStyle(vente.client.provenance.label).border
+                    }"
+                  >
                     {{ vente.client.provenance.label }}
                   </span>
                 </div>
@@ -276,12 +476,13 @@
               <!-- Client selection (Haut Gauche) -->
               <div class="form-group">
                 <label class="form-label">Client *</label>
-                <select v-model="form.client_id" required class="form-select">
-                  <option value="" disabled>-- Choisir le client --</option>
-                  <option v-for="c in clientsList" :key="c.id" :value="c.id">
-                    {{ c.nom }} ({{ c.numero || 'Pas de numéro' }})
-                  </option>
-                </select>
+                <SearchableSelect
+                  v-model="form.client_id"
+                  :options="clientOptions"
+                  placeholder="-- Choisir le client --"
+                  search-placeholder="Rechercher client (nom, tél, email)..."
+                  required
+                />
               </div>
 
               <!-- Date de la vente (Haut Droite) -->
@@ -320,23 +521,24 @@
                     <span>Gérer</span>
                   </router-link>
                 </div>
-                <select v-model="form.methode_paiement_id" required class="form-select">
-                  <option value="" disabled>-- Choisir le mode de paiement --</option>
-                  <option v-for="m in paymentMethods" :key="m.id" :value="m.id">
-                    {{ m.label }} <span v-if="m.details">({{ m.details }})</span>
-                  </option>
-                </select>
+                <SearchableSelect
+                  v-model="form.methode_paiement_id"
+                  :options="paymentMethodOptions"
+                  placeholder="-- Choisir le mode de paiement --"
+                  search-placeholder="Rechercher mode de paiement..."
+                  required
+                />
               </div>
 
               <!-- Vendeur / Affilié (Bas Droite) -->
               <div class="form-group">
                 <label class="form-label">Vendeur / Affilié *</label>
-                <select v-model="form.user_affilie_id" class="form-select">
-                  <option :value="user?.id">👑 Moi-même ({{ user?.prenom }} {{ user?.nom }})</option>
-                  <option v-for="u in vendorsList" :key="u.id" :value="u.id">
-                    👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Vendeur' }})
-                  </option>
-                </select>
+                <SearchableSelect
+                  v-model="form.user_affilie_id"
+                  :options="vendorOptions"
+                  placeholder="-- Choisir le vendeur --"
+                  search-placeholder="Rechercher un vendeur..."
+                />
               </div>
             </div>
 
@@ -368,17 +570,15 @@
                 <div v-for="(line, idx) in form.articles" :key="idx" class="sale-table-row">
                   <!-- Produit -->
                   <div class="cell-product">
-                    <select
+                    <SearchableSelect
                       v-model="line.produit_id"
-                      @change="onProductSelect(line)"
+                      :options="productOptions"
+                      placeholder="-- Sélectionner le produit --"
+                      search-placeholder="Rechercher un logiciel..."
+                      compact
                       required
-                      class="form-select"
-                    >
-                      <option value="" disabled>-- Sélectionner le produit --</option>
-                      <option v-for="p in productsList" :key="p.id" :value="p.id">
-                        {{ p.nom }} (Prix actif: {{ formatPrice(p.prix_actif) }})
-                      </option>
-                    </select>
+                      @change="onProductSelect(line)"
+                    />
                   </div>
 
                   <!-- Quantité -->
@@ -559,12 +759,24 @@ import {
   Package,
   ExternalLink,
   ShoppingCart,
-  Clock
+  Clock,
+  Globe,
+  CreditCard,
+  User,
+  DollarSign,
+  Calendar,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  SlidersHorizontal
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
 import { resolveImageUrl } from '../utils/imageHelper'
+import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
+import SearchableSelect from '../components/SearchableSelect.vue'
+import { getProvenanceStyle } from '../utils/provenanceHelper'
 
 const route = useRoute()
 const { user, isSuperAdmin } = useAuth()
@@ -578,15 +790,60 @@ const provenancesList = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 
+const clientOptions = computed(() => {
+  return (clientsList.value || []).map((c) => ({
+    id: c.id,
+    label: c.nom,
+    subtitle: c.numero ? c.numero : (c.email || 'Sans contact'),
+  }))
+})
+
+const productOptions = computed(() => {
+  return (productsList.value || []).map((p) => ({
+    id: p.id,
+    label: p.nom,
+    subtitle: p.prix_actif ? `${formatPrice(p.prix_actif)}` : (p.prix_achat ? `Coût: ${formatPrice(p.prix_achat)}` : ''),
+  }))
+})
+
+const vendorOptions = computed(() => {
+  const list = []
+  if (user.value) {
+    list.push({
+      id: user.value.id,
+      label: `👑 Moi-même (${user.value.prenom || ''} ${user.value.nom || ''})`,
+      subtitle: user.value.role?.label || 'Utilisateur connecté',
+    })
+  }
+  for (const u of vendorsList.value || []) {
+    if (user.value && u.id === user.value.id) continue
+    list.push({
+      id: u.id,
+      label: `👤 ${u.prenom || ''} ${u.nom || ''}`,
+      subtitle: u.role?.label || 'Vendeur',
+    })
+  }
+  return list
+})
+
 const filters = ref({
   vendeur: '',
   search: '',
   date_debut: '',
   date_fin: '',
-  methode_paiement: '',
+  methodes_paiement: [],
   client: '',
-  provenance: '',
+  provenances: [],
+  montant_min: '',
+  montant_max: '',
 })
+
+// Système de tri multicritère
+const currentSort = ref({
+  field: 'date',
+  direction: 'desc'
+})
+const sortSelectValue = ref('date-desc')
 
 const activePeriodPreset = ref('all')
 let searchTimeout = null
@@ -630,9 +887,11 @@ const hasActiveFilters = computed(() => {
     filters.value.search ||
     filters.value.date_debut ||
     filters.value.date_fin ||
-    filters.value.methode_paiement ||
+    filters.value.methodes_paiement?.length ||
     filters.value.client ||
-    filters.value.provenance ||
+    filters.value.provenances?.length ||
+    filters.value.montant_min ||
+    filters.value.montant_max ||
     activePeriodPreset.value !== 'all'
   )
 })
@@ -649,12 +908,6 @@ const activeClientName = computed(() => {
   return c ? c.nom : ''
 })
 
-const activeProvenanceName = computed(() => {
-  if (!filters.value.provenance) return ''
-  const p = provenancesList.value.find(item => String(item.id) === String(filters.value.provenance))
-  return p ? p.label : ''
-})
-
 const activePeriodLabel = computed(() => {
   switch (activePeriodPreset.value) {
     case 'today': return "Aujourd'hui"
@@ -664,10 +917,167 @@ const activePeriodLabel = computed(() => {
   }
 })
 
-const filteredSalesTotal = computed(() => {
-  if (!Array.isArray(sales.value)) return 0
-  return sales.value.reduce((acc, v) => acc + (Number(v.total) || 0), 0)
+// Options formatées pour MultiSelectDropdown
+const provenanceOptions = computed(() => {
+  return provenancesList.value.map(p => {
+    const st = getProvenanceStyle(p.label)
+    return {
+      id: p.id,
+      label: p.label,
+      count: p.clients_count,
+      color: {
+        dot: st.dot,
+        text: st.text,
+        bg: st.bg
+      }
+    }
+  })
 })
+
+const paymentMethodOptions = computed(() => {
+  return paymentMethods.value.map(m => ({
+    id: m.id,
+    label: m.label,
+    subtitle: m.details || '',
+    color: {
+      dot: '#10b981',
+      text: '#10b981'
+    }
+  }))
+})
+
+// Tri interactif multicritère
+function toggleSort(field) {
+  if (currentSort.value.field === field) {
+    currentSort.value.direction = currentSort.value.direction === 'asc' ? 'desc' : 'asc'
+  } else {
+    currentSort.value.field = field
+    currentSort.value.direction = (field === 'date' || field === 'total' || field === 'id' || field === 'articles') ? 'desc' : 'asc'
+  }
+  sortSelectValue.value = `${currentSort.value.field}-${currentSort.value.direction}`
+  fetchSales()
+}
+
+function onSortSelectChange() {
+  const [field, direction] = sortSelectValue.value.split('-')
+  currentSort.value = { field, direction }
+  fetchSales()
+}
+
+// Tri côté client dynamique instantané (enrichi avec le tri serveur)
+const sortedSales = computed(() => {
+  if (!Array.isArray(sales.value)) return []
+  const list = [...sales.value]
+  const { field, direction } = currentSort.value
+  const factor = direction === 'asc' ? 1 : -1
+
+  return list.sort((a, b) => {
+    switch (field) {
+      case 'id':
+        return ((Number(a.id) || 0) - (Number(b.id) || 0)) * factor
+
+      case 'date':
+        return ((new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0)) * factor
+
+      case 'total':
+        return ((Number(a.total) || 0) - (Number(b.total) || 0)) * factor
+
+      case 'client':
+        return (a.client?.nom || '').localeCompare(b.client?.nom || '') * factor
+
+      case 'vendeur': {
+        const nameA = `${a.user_affilie?.prenom || ''} ${a.user_affilie?.nom || ''}`
+        const nameB = `${b.user_affilie?.prenom || ''} ${b.user_affilie?.nom || ''}`
+        return nameA.localeCompare(nameB) * factor
+      }
+
+      case 'reglement':
+        return (a.methode_paiement?.label || '').localeCompare(b.methode_paiement?.label || '') * factor
+
+      case 'provenance':
+        return (a.client?.provenance?.label || '').localeCompare(b.client?.provenance?.label || '') * factor
+
+      case 'articles':
+        return ((a.commandes?.length || 0) - (b.commandes?.length || 0)) * factor
+
+      default:
+        return 0
+    }
+  })
+})
+
+const filteredSalesTotal = computed(() => {
+  if (!Array.isArray(sortedSales.value)) return 0
+  return sortedSales.value.reduce((acc, v) => acc + (Number(v.total) || 0), 0)
+})
+
+// Fonctions de filtres rapides par provenance
+function toggleProvenanceFilter(id) {
+  const idx = filters.value.provenances.indexOf(id)
+  if (idx >= 0) {
+    filters.value.provenances.splice(idx, 1)
+  } else {
+    filters.value.provenances.push(id)
+  }
+  fetchSales()
+}
+
+function clearProvenancesFilter() {
+  filters.value.provenances = []
+  fetchSales()
+}
+
+function removeProvenanceFilter(id) {
+  const idx = filters.value.provenances.indexOf(id)
+  if (idx >= 0) {
+    filters.value.provenances.splice(idx, 1)
+    fetchSales()
+  }
+}
+
+function removePaymentFilter(id) {
+  const idx = filters.value.methodes_paiement.indexOf(id)
+  if (idx >= 0) {
+    filters.value.methodes_paiement.splice(idx, 1)
+    fetchSales()
+  }
+}
+
+function getProvenanceLabel(id) {
+  const p = provenancesList.value.find(item => String(item.id) === String(id))
+  return p ? p.label : ''
+}
+
+function getPaymentMethodLabel(id) {
+  const m = paymentMethods.value.find(item => String(item.id) === String(id))
+  return m ? m.label : ''
+}
+
+function getProvenanceSalesCount(id) {
+  if (!sales.value) return 0
+  return sales.value.filter(s => String(s.client?.provenance?.id) === String(id)).length
+}
+
+function getProvenanceChipStyle(prov) {
+  const isSelected = filters.value.provenances.includes(prov.id)
+  const st = getProvenanceStyle(prov.label)
+  if (isSelected) {
+    return {
+      backgroundColor: st.bg,
+      borderColor: st.border,
+      color: st.text,
+      boxShadow: `0 0 10px ${st.border}`
+    }
+  }
+  return {}
+}
+
+function formatAmountRange(min, max) {
+  if (min && max) return `${formatPrice(min)} - ${formatPrice(max)}`
+  if (min) return `≥ ${formatPrice(min)}`
+  if (max) return `≤ ${formatPrice(max)}`
+  return ''
+}
 
 async function fetchSales() {
   loading.value = true
@@ -677,9 +1087,30 @@ async function fetchSales() {
     if (filters.value.search) params.search = filters.value.search.trim()
     if (filters.value.date_debut) params.date_debut = filters.value.date_debut
     if (filters.value.date_fin) params.date_fin = filters.value.date_fin
-    if (filters.value.methode_paiement) params.methode_paiement = filters.value.methode_paiement
     if (filters.value.client) params.client = filters.value.client
-    if (filters.value.provenance) params.provenance = filters.value.provenance
+    if (filters.value.montant_min) params.montant_min = filters.value.montant_min
+    if (filters.value.montant_max) params.montant_max = filters.value.montant_max
+
+    if (filters.value.provenances?.length) {
+      params.provenances = filters.value.provenances.join(',')
+    }
+    if (filters.value.methodes_paiement?.length) {
+      params.methodes_paiement = filters.value.methodes_paiement.join(',')
+    }
+
+    if (currentSort.value.field) {
+      const backendMap = {
+        date: 'date',
+        total: 'total',
+        id: 'id',
+        client: 'client__nom',
+        vendeur: 'user_affilie__nom',
+        reglement: 'methode_paiement__label',
+        provenance: 'client__provenance__label'
+      }
+      const fieldName = backendMap[currentSort.value.field] || 'date'
+      params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName
+    }
 
     const res = await apiClient.get('/ventes/', { params })
     sales.value = res.data.results || res.data || []
@@ -766,11 +1197,15 @@ function resetFilters() {
     search: '',
     date_debut: '',
     date_fin: '',
-    methode_paiement: '',
+    methodes_paiement: [],
     client: '',
-    provenance: '',
+    provenances: [],
+    montant_min: '',
+    montant_max: '',
   }
   activePeriodPreset.value = 'all'
+  currentSort.value = { field: 'date', direction: 'desc' }
+  sortSelectValue.value = 'date-desc'
   fetchSales()
 }
 
@@ -1207,6 +1642,43 @@ onMounted(async () => {
   width: 180px;
 }
 
+/* AMOUNT FILTER BOX */
+.amount-filter-box {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg-input, rgba(10, 20, 36, 0.7));
+  border: 1px solid var(--border-card, rgba(0, 210, 255, 0.12));
+  border-radius: var(--radius-md, 12px);
+  padding: 0.25rem 0.6rem;
+  transition: all var(--transition-fast);
+}
+
+.amount-filter-box:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.2);
+}
+
+.amount-mini-input {
+  width: 80px;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.78rem;
+  background: transparent;
+  border: none;
+  color: #fff;
+  outline: none;
+}
+
+.amount-mini-input::placeholder {
+  color: var(--text-muted);
+}
+
+.btn-reset-filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .btn-new-sale {
   margin-left: auto;
 }
@@ -1224,33 +1696,153 @@ onMounted(async () => {
   margin-left: auto;
 }
 
-/* 3. SUMMARY BANNER */
+/* 3. PROVENANCES QUICK BAR (CHIPS) */
+.provenance-quick-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-x: auto;
+}
+
+.quick-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.quick-chips-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.prov-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.prov-chip-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.prov-chip-btn.active-all {
+  background: var(--primary-light, rgba(0, 210, 255, 0.15));
+  border-color: var(--primary, #00d2ff);
+  color: var(--primary, #00d2ff);
+}
+
+.prov-chip-btn.active {
+  font-weight: 700;
+}
+
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chip-count {
+  font-size: 0.65rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.1rem 0.35rem;
+  border-radius: 9999px;
+  line-height: 1;
+}
+
+.chip-check {
+  margin-left: -0.1rem;
+}
+
+/* 4. SUMMARY BANNER & SORT CONTROLS */
 .filter-results-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 0.75rem;
+  padding-top: 0.85rem;
   border-top: 1px solid var(--border-subtle);
   font-size: 0.85rem;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .summary-left {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.85rem;
   flex-wrap: wrap;
+  flex: 1;
 }
 
 .results-count strong {
   color: var(--primary);
+  font-size: 0.95rem;
+}
+
+.sort-selector-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.sort-select-compact {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.76rem;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sort-select-compact option {
+  background: #091322;
+  color: #fff;
+}
+
+.active-filter-pills-list {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .active-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-subtle);
-  padding: 0.2rem 0.6rem;
+  padding: 0.22rem 0.65rem;
   border-radius: 9999px;
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -1258,6 +1850,34 @@ onMounted(async () => {
 
 .active-filter-pill strong {
   color: var(--text-main);
+}
+
+.pill-provenance {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.pill-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+
+.pill-remove-btn:hover {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.2);
 }
 
 .summary-right {
@@ -1269,6 +1889,53 @@ onMounted(async () => {
 .total-label {
   color: var(--text-secondary);
   font-weight: 600;
+}
+
+.total-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+/* SORTABLE TABLE HEADERS */
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.sortable-th:hover {
+  background: rgba(0, 210, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+.th-content {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.th-sort-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sort-active {
+  color: var(--primary);
+}
+
+.sort-idle {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.sortable-th:hover .sort-idle {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.prov-badge-table {
+  border-width: 1px;
+  border-style: solid;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .total-val {

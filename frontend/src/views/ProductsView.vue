@@ -13,6 +13,19 @@
         />
       </div>
 
+      <div class="sort-selector-wrapper">
+        <SlidersHorizontal :size="14" class="text-primary" />
+        <span class="text-xs text-muted font-semibold">Trier :</span>
+        <select v-model="sortOption" class="form-select sort-select-compact">
+          <option value="nom-asc">📦 Nom (A → Z)</option>
+          <option value="nom-desc">📦 Nom (Z → A)</option>
+          <option value="prix_actif-desc">💰 Prix vente (Plus élevé)</option>
+          <option value="prix_actif-asc">💰 Prix vente (Plus bas)</option>
+          <option value="prix_achat-desc">🏷️ Prix achat (Plus élevé)</option>
+          <option value="prix_achat-asc">🏷️ Prix achat (Plus bas)</option>
+        </select>
+      </div>
+
       <button @click="openCreateModal" class="btn btn-primary">
         <Plus :size="18" />
         <span>Nouveau Produit</span>
@@ -25,8 +38,8 @@
       <span>Chargement des licences...</span>
     </div>
 
-    <div v-else-if="products.length" class="products-grid">
-      <div v-for="prod in products" :key="prod.id" class="card product-card">
+    <div v-else-if="sortedProducts.length" class="products-grid">
+      <div v-for="prod in sortedProducts" :key="prod.id" class="card product-card">
         <!-- Top Card Row with Product Photo or Fallback -->
         <div class="prod-card-top">
           <div v-if="prod.image" class="prod-img-box" :title="isGoogleDriveUrl(prod.image) ? 'Photo hébergée sur Google Drive' : 'Photo du produit'">
@@ -71,12 +84,17 @@
         <!-- Card Footer Actions -->
         <div class="prod-card-footer">
           <button @click="openDetailModal(prod)" class="btn btn-secondary btn-sm" title="Fiche détaillée et historique">
-            <Eye :size="16" />
-            <span>Détails & Guide</span>
+            <Eye :size="15" />
+            <span>Détails</span>
+          </button>
+
+          <button @click="openEditModal(prod)" class="btn btn-secondary btn-sm btn-edit-product" title="Modifier le produit">
+            <Pencil :size="15" />
+            <span>Modifier</span>
           </button>
 
           <button @click="openPriceModal(prod)" class="btn btn-secondary btn-sm" title="Modifier le prix actif">
-            <Tag :size="16" />
+            <Tag :size="15" />
             <span>Prix</span>
           </button>
 
@@ -209,7 +227,13 @@
             <h3>{{ selectedProduct.nom }}</h3>
             <span class="text-xs text-muted">Créé le {{ formatDate(selectedProduct.created_at) }}</span>
           </div>
-          <button @click="showDetailModal = false" class="btn-close"><X :size="20" /></button>
+          <div class="flex items-center gap-2">
+            <button @click="openEditModal(selectedProduct)" class="btn btn-secondary btn-xs" title="Modifier les informations">
+              <Pencil :size="13" />
+              <span>Modifier</span>
+            </button>
+            <button @click="showDetailModal = false" class="btn-close"><X :size="20" /></button>
+          </div>
         </div>
 
         <div class="modal-body detail-grid">
@@ -389,11 +413,117 @@
         </form>
       </div>
     </div>
+    <!-- MODAL: Modifier un Produit -->
+    <div v-if="showEditModal" class="modal-backdrop">
+      <div class="modal-card card animate-fade">
+        <div class="modal-header">
+          <div class="flex items-center gap-2">
+            <Pencil :size="20" class="text-primary" />
+            <h3>Modifier le Produit</h3>
+          </div>
+          <button @click="showEditModal = false" class="btn-close"><X :size="20" /></button>
+        </div>
+
+        <form @submit.prevent="submitEditProduct" class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Nom du produit / licence *</label>
+            <input v-model="editForm.nom" required type="text" class="form-input" placeholder="Ex: Windows 11 Pro Retail" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea v-model="editForm.description" rows="2" class="form-textarea" placeholder="Détails, compatibilité..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Prix d'achat (Coût de revient) *</label>
+              <input v-model.number="editForm.prix_achat" required type="number" step="100" class="form-input" placeholder="Ex: 15000" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Prix de vente actif (Ar) *</label>
+              <input v-model.number="editForm.prix_vente" required type="number" step="100" class="form-input" placeholder="Ex: 35000" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Lien d'achat fournisseur / grossiste</label>
+            <input v-model="editForm.lien_achat" type="url" class="form-input" placeholder="https://fournisseur.com/item/..." />
+          </div>
+
+          <!-- Image / Photo du produit (Lien Google Drive ou URL) -->
+          <div class="form-group">
+            <div class="flex items-center justify-between mb-1">
+              <label class="form-label" style="margin-bottom: 0;">Photo du produit (Lien Google Drive)</label>
+              <span v-if="isGoogleDriveUrl(editForm.image)" class="badge-drive text-xs">
+                <Check :size="12" /> Google Drive détecté
+              </span>
+            </div>
+
+            <div class="image-uploader-field">
+              <!-- Live Preview if link entered or file chosen -->
+              <div v-if="editImagePreview || editForm.image" class="preview-container">
+                <img
+                  :src="editImagePreview || resolveImageUrl(editForm.image)"
+                  alt="Aperçu photo"
+                  class="image-preview"
+                  @error="handleEditPreviewError"
+                />
+                <button type="button" @click="clearEditImage" class="btn-clear-preview" title="Supprimer la photo">
+                  <X :size="14" />
+                </button>
+              </div>
+
+              <!-- Google Drive URL input with icon -->
+              <div class="drive-input-wrapper">
+                <div class="input-with-icon">
+                  <Link2 :size="15" class="field-icon text-primary" />
+                  <input
+                    v-model="editForm.image"
+                    type="text"
+                    class="form-input drive-main-input"
+                    placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                    @input="editImagePreview = null"
+                  />
+                </div>
+                <p class="drive-hint">
+                  💡 <strong>Google Drive :</strong> Collez le lien de partage du fichier photo.
+                </p>
+              </div>
+
+              <!-- Secondary local file option -->
+              <div class="upload-options-secondary">
+                <span class="text-xs text-muted">Ou importer un fichier local :</span>
+                <label class="btn btn-secondary btn-xs upload-btn">
+                  <Upload :size="13" />
+                  <span>Fichier local</span>
+                  <input type="file" accept="image/*" class="hidden-input" @change="onEditFileChange" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Guide d'activation (Instructions client)</label>
+            <textarea v-model="editForm.description_activation" rows="3" class="form-textarea" placeholder="Ex: 1. Aller dans Paramètres > Activation..."></textarea>
+          </div>
+
+          <div class="modal-actions">
+            <button @click="showEditModal = false" type="button" class="btn btn-secondary">Annuler</button>
+            <button type="submit" class="btn btn-primary" :disabled="submitting">
+              <span v-if="submitting">Enregistrement...</span>
+              <span v-else>Sauvegarder les modifications</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   Package,
   Search,
@@ -409,7 +539,9 @@ import {
   Clock,
   Upload,
   Link2,
-  Check
+  Check,
+  SlidersHorizontal,
+  Pencil
 } from '@lucide/vue'
 import apiClient from '../api/client'
 import {
@@ -423,9 +555,31 @@ const products = ref([])
 const loading = ref(false)
 const searchQuery = ref('')
 const submitting = ref(false)
+const sortOption = ref('nom-asc')
+
+const sortedProducts = computed(() => {
+  if (!Array.isArray(products.value)) return []
+  const list = [...products.value]
+  const [field, direction] = sortOption.value.split('-')
+  const factor = direction === 'asc' ? 1 : -1
+
+  return list.sort((a, b) => {
+    switch (field) {
+      case 'nom':
+        return (a.nom || '').localeCompare(b.nom || '') * factor
+      case 'prix_actif':
+        return ((Number(a.prix_actif) || 0) - (Number(b.prix_actif) || 0)) * factor
+      case 'prix_achat':
+        return ((Number(a.prix_achat) || 0) - (Number(b.prix_achat) || 0)) * factor
+      default:
+        return 0
+    }
+  })
+})
 
 // Modals & Photos
 const showCreateModal = ref(false)
+const showEditModal = ref(false)
 const showDetailModal = ref(false)
 const showPriceModal = ref(false)
 const selectedProduct = ref(null)
@@ -436,6 +590,9 @@ const copied = ref(false)
 const imagePreview = ref(null)
 const selectedFile = ref(null)
 const uploadingPhoto = ref(false)
+
+const editImagePreview = ref(null)
+const editSelectedFile = ref(null)
 
 // Inline Google Drive photo link editor in Detail Modal
 const editingPhotoLink = ref(false)
@@ -448,6 +605,17 @@ const form = ref({
   image: '',
   prix_achat: '',
   prix_initial: '',
+  lien_achat: '',
+  description_activation: '',
+})
+
+const editForm = ref({
+  id: null,
+  nom: '',
+  description: '',
+  image: '',
+  prix_achat: 0,
+  prix_vente: 0,
   lien_achat: '',
   description_activation: '',
 })
@@ -608,6 +776,120 @@ async function submitCreateProduct() {
   }
 }
 
+function onEditFileChange(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  editSelectedFile.value = file
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    editImagePreview.value = event.target.result
+    editForm.value.image = event.target.result
+  }
+  reader.readAsDataURL(file)
+}
+
+function clearEditImage() {
+  editSelectedFile.value = null
+  editImagePreview.value = null
+  editForm.value.image = ''
+}
+
+function handleEditPreviewError(event) {
+  const img = event.target
+  if (!img) return
+  if (editForm.value.image && isGoogleDriveUrl(editForm.value.image) && !img.dataset.fallbackTried) {
+    img.dataset.fallbackTried = 'true'
+    img.src = getGoogleDriveThumbnailFallback(editForm.value.image)
+  }
+}
+
+async function openEditModal(prod) {
+  if (!prod) return
+  editSelectedFile.value = null
+  editImagePreview.value = null
+
+  let guide = ''
+  if (prod.activations && prod.activations.length > 0) {
+    guide = prod.activations[0].description_activation || ''
+  } else {
+    try {
+      const res = await apiClient.get(`/produits/${prod.id}/activation/`)
+      guide = res.data.description_activation || ''
+    } catch (e) {
+      guide = ''
+    }
+  }
+
+  editForm.value = {
+    id: prod.id,
+    nom: prod.nom || '',
+    description: prod.description || '',
+    image: prod.image || '',
+    prix_achat: prod.prix_achat !== null && prod.prix_achat !== undefined ? Number(prod.prix_achat) : 0,
+    prix_vente: prod.prix_actif !== null && prod.prix_actif !== undefined ? Number(prod.prix_actif) : (Number(prod.prix_achat) || 0),
+    lien_achat: prod.lien_achat || '',
+    description_activation: guide,
+  }
+  showEditModal.value = true
+}
+
+async function submitEditProduct() {
+  if (!editForm.value.nom.trim()) return
+  submitting.value = true
+  try {
+    const payload = {
+      nom: editForm.value.nom.trim(),
+      description: editForm.value.description,
+      prix_achat: editForm.value.prix_achat,
+      prix_vente: editForm.value.prix_vente,
+      prix_initial: editForm.value.prix_vente,
+      lien_achat: editForm.value.lien_achat,
+      image: editForm.value.image,
+      description_activation: editForm.value.description_activation,
+    }
+
+    const res = await apiClient.patch(`/produits/${editForm.value.id}/`, payload)
+    const updatedProd = res.data
+
+    if (editSelectedFile.value && updatedProd.id) {
+      try {
+        const formData = new FormData()
+        formData.append('image', editSelectedFile.value)
+        const uploadRes = await apiClient.post(`/produits/${updatedProd.id}/upload-image/`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        updatedProd.image = uploadRes.data.image
+      } catch (uploadErr) {
+        console.warn("Échec upload multipart:", uploadErr)
+      }
+    }
+
+    showEditModal.value = false
+    await fetchProducts()
+
+    if (selectedProduct.value && selectedProduct.value.id === updatedProd.id) {
+      const refreshed = products.value.find(p => p.id === updatedProd.id)
+      if (refreshed) {
+        selectedProduct.value = refreshed
+        activationGuide.value = editForm.value.description_activation
+      }
+    }
+  } catch (err) {
+    const errData = err.response?.data
+    let msg = "Erreur lors de la modification du produit"
+    if (typeof errData === 'object' && errData !== null) {
+      msg = Object.entries(errData)
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+        .join(' | ')
+    } else if (err.response?.data?.detail) {
+      msg = err.response.data.detail
+    }
+    alert(msg)
+  } finally {
+    submitting.value = false
+  }
+}
+
 async function openDetailModal(prod) {
   selectedProduct.value = prod
   copied.value = false
@@ -714,6 +996,31 @@ onMounted(() => {
 .search-input {
   width: 100%;
   padding-left: 2.75rem;
+}
+
+.sort-selector-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.sort-select-compact {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sort-select-compact option {
+  background: #091322;
+  color: #fff;
 }
 
 .products-grid {
@@ -1015,13 +1322,28 @@ onMounted(() => {
 .prod-card-footer {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
 }
 
 .prod-card-footer .btn-sm {
   flex: 1;
+  min-width: 70px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.78rem;
+  justify-content: center;
+}
+
+.btn-edit-product {
+  color: #00d2ff;
+  border-color: rgba(0, 210, 255, 0.25);
+}
+
+.btn-edit-product:hover {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: #00d2ff;
 }
 
 .btn-danger-icon {

@@ -38,12 +38,14 @@
 
       <div class="form-group">
         <label class="form-label">Provenance du client</label>
-        <select v-model="form.provenance_id" class="mobile-select">
-          <option :value="null">-- Non spécifié --</option>
-          <option v-for="prov in provenances" :key="prov.id" :value="prov.id">
-            {{ prov.label }}
-          </option>
-        </select>
+        <SearchableSelect
+          v-model="form.provenance_id"
+          :options="provenanceOptions"
+          title="Provenance du client"
+          placeholder="-- Non spécifié --"
+          search-placeholder="Rechercher provenance..."
+          allow-clear
+        />
       </div>
 
       <button
@@ -60,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   IonModal,
   IonHeader,
@@ -73,6 +75,7 @@ import {
 } from '@ionic/vue'
 import { closeOutline } from 'ionicons/icons'
 import apiClient from '../api/client'
+import SearchableSelect from './SearchableSelect.vue'
 
 const props = defineProps({
   isOpen: Boolean,
@@ -83,6 +86,14 @@ const props = defineProps({
   },
 })
 const emit = defineEmits(['close', 'saved'])
+
+const provenanceOptions = computed(() => {
+  return (props.provenances || []).map((prov) => ({
+    id: prov.id,
+    label: prov.label,
+    subtitle: '',
+  }))
+})
 
 const isEditing = ref(false)
 const isSubmitting = ref(false)

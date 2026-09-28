@@ -36,6 +36,22 @@ class ProvenanceViewSet(viewsets.ModelViewSet):
 
 
 
+def parse_id_list(query_params, *keys):
+    """Parses comma-separated strings or repeated query parameters into unique ints."""
+    raw_values = []
+    for k in keys:
+        raw_values.extend(query_params.getlist(k))
+    ids = []
+    for item in raw_values:
+        if not item:
+            continue
+        for part in str(item).split(','):
+            part = part.strip()
+            if part.isdigit():
+                ids.append(int(part))
+    return list(dict.fromkeys(ids))
+
+
 class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.all().select_related('provenance').prefetch_related('ventes__commandes', 'ventes__methode_paiement')
     serializer_class = ClientSerializer
@@ -47,9 +63,18 @@ class ClientViewSet(viewsets.ModelViewSet):
         query = self.request.query_params.get('search')
         if query:
             qs = qs.filter(nom__icontains=query) | qs.filter(numero__icontains=query)
-        provenance_id = self.request.query_params.get('provenance')
-        if provenance_id:
-            qs = qs.filter(provenance_id=provenance_id)
+        provenance_ids = parse_id_list(self.request.query_params, 'provenance', 'provenances')
+        if provenance_ids:
+            qs = qs.filter(provenance_id__in=provenance_ids)
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            allowed = [
+                'nom', '-nom',
+                'created_at', '-created_at',
+                'provenance__label', '-provenance__label',
+            ]
+            if ordering in allowed:
+                return qs.order_by(ordering)
         return qs.order_by('-created_at')
 
     @action(detail=True, methods=['get'])
