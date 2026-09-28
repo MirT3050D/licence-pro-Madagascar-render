@@ -55,43 +55,140 @@
         <div class="admin-header">
           <div>
             <h3 class="admin-title">👑 Administration Équipe</h3>
-            <span class="admin-sub">Validation des comptes vendeurs</span>
+            <span class="admin-sub">Validation des comptes & gestion des accès</span>
           </div>
-          <button @click="loadUsers" class="btn-refresh-sm">
+          <button @click="loadUsers" class="btn-refresh-sm" :class="{ 'spinning': usersLoading }">
             <ion-icon :icon="refreshOutline" />
           </button>
         </div>
 
-        <div v-if="usersList.length === 0" class="empty-users">
-          <span>Aucun utilisateur enregistré.</span>
+        <!-- Pending Registrations Alert Banner -->
+        <div v-if="pendingCount > 0" class="pending-alert-banner">
+          <div class="banner-left">
+            <ion-icon :icon="alertCircleOutline" class="banner-icon" />
+            <div class="banner-texts">
+              <span class="banner-title">{{ pendingCount }} inscription{{ pendingCount > 1 ? 's' : '' }} en attente</span>
+              <span class="banner-sub">Validation requise pour autoriser l'accès vendeur</span>
+            </div>
+          </div>
+          <button
+            v-if="activeFilter !== 'pending'"
+            class="banner-quick-btn"
+            @click="selectFilter('pending')"
+          >
+            Afficher
+          </button>
         </div>
 
+        <!-- Filter Segment -->
+        <div class="admin-filter-bar">
+          <button
+            :class="['filter-btn', activeFilter === 'pending' ? 'active pending' : '']"
+            @click="selectFilter('pending')"
+          >
+            En attente
+            <span v-if="pendingCount > 0" class="filter-badge pending">{{ pendingCount }}</span>
+          </button>
+          <button
+            :class="['filter-btn', activeFilter === 'active' ? 'active' : '']"
+            @click="selectFilter('active')"
+          >
+            Actifs
+            <span class="filter-badge">{{ activeCount }}</span>
+          </button>
+          <button
+            :class="['filter-btn', activeFilter === 'all' ? 'active' : '']"
+            @click="selectFilter('all')"
+          >
+            Tous
+            <span class="filter-badge">{{ usersList.length }}</span>
+          </button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="admin-search-wrap">
+          <ion-icon :icon="searchOutline" class="search-icon-sm" />
+          <input
+            v-model="userSearchQuery"
+            type="text"
+            placeholder="Rechercher par nom, email..."
+            class="admin-search-input"
+          />
+          <button
+            v-if="userSearchQuery"
+            @click="userSearchQuery = ''"
+            class="btn-clear-search"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Empty State -->
+        <div v-if="filteredUsers.length === 0" class="empty-users">
+          <ion-icon :icon="personOutline" class="empty-icon" />
+          <span v-if="activeFilter === 'pending'">Aucune inscription en attente de validation.</span>
+          <span v-else-if="userSearchQuery">Aucun utilisateur trouvé pour "{{ userSearchQuery }}".</span>
+          <span v-else>Aucun utilisateur enregistré.</span>
+        </div>
+
+        <!-- Users List -->
         <div v-else class="users-mobile-list">
-          <div v-for="u in usersList" :key="u.id" class="user-item-card">
+          <div v-for="u in filteredUsers" :key="u.id" class="user-item-card">
             <div class="u-top">
-              <span class="u-name">{{ u.prenom }} {{ u.nom }}</span>
+              <div class="u-identity">
+                <span class="u-name">{{ u.prenom }} {{ u.nom }}</span>
+                <span class="u-role-pill">{{ u.role?.label || 'Sans rôle' }}</span>
+              </div>
               <span :class="['u-status-badge', u.is_active ? 'active' : 'pending']">
                 {{ u.is_active ? 'Actif' : 'En attente' }}
               </span>
             </div>
-            <span class="u-meta">{{ u.email }} • {{ u.role?.label || 'Sans rôle' }}</span>
+
+            <div class="u-details">
+              <span class="u-meta-line">✉️ {{ u.email }}</span>
+              <span class="u-meta-line" v-if="u.numero">📞 {{ u.numero }}</span>
+              <span class="u-meta-line u-date" v-if="u.created_at">
+                📅 Inscrit le {{ formatDate(u.created_at) }}
+              </span>
+            </div>
 
             <!-- Action buttons for admin -->
             <div class="u-actions" v-if="!u.is_superuser && u.id !== user?.id">
-              <button
-                v-if="!u.is_active"
-                @click="approveUser(u)"
-                class="btn-u-action approve"
-              >
-                <ion-icon :icon="checkmarkCircleOutline" />
-                <span>Valider le compte</span>
-              </button>
+              <!-- When account is not active (pending registration or disabled) -->
+              <template v-if="!u.is_active">
+                <button
+                  @click="approveUser(u)"
+                  :disabled="loadingUserId === u.id"
+                  class="btn-u-action approve"
+                >
+                  <ion-icon
+                    :icon="loadingUserId === u.id ? refreshOutline : checkmarkCircleOutline"
+                    :class="{ 'spinning': loadingUserId === u.id }"
+                  />
+                  <span>{{ loadingUserId === u.id ? 'Validation...' : 'Valider le compte' }}</span>
+                </button>
+                <button
+                  @click="rejectUser(u)"
+                  :disabled="loadingUserId === u.id"
+                  class="btn-u-action reject"
+                >
+                  <ion-icon :icon="trashOutline" />
+                  <span>Refuser</span>
+                </button>
+              </template>
+
+              <!-- When account is active -->
               <button
                 v-else
                 @click="toggleUserActive(u)"
+                :disabled="loadingUserId === u.id"
                 class="btn-u-action deactivate"
               >
-                <span>Désactiver l'accès</span>
+                <ion-icon
+                  :icon="loadingUserId === u.id ? refreshOutline : closeCircleOutline"
+                  :class="{ 'spinning': loadingUserId === u.id }"
+                />
+                <span>{{ loadingUserId === u.id ? 'Patientez...' : "Désactiver l'accès" }}</span>
               </button>
             </div>
           </div>
@@ -143,6 +240,11 @@ import {
   logOutOutline,
   refreshOutline,
   checkmarkCircleOutline,
+  closeCircleOutline,
+  alertCircleOutline,
+  searchOutline,
+  trashOutline,
+  personOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
@@ -154,7 +256,13 @@ const profileStats = ref({
   total_ventes: 0,
   chiffre_affaires: 0,
 })
+
 const usersList = ref([])
+const usersLoading = ref(false)
+const loadingUserId = ref(null)
+const activeFilter = ref('all')
+const hasUserManuallySelectedFilter = ref(false)
+const userSearchQuery = ref('')
 
 const userInitials = computed(() => {
   const p = user.value?.prenom || ''
@@ -168,9 +276,50 @@ const apiServerLabel = computed(() => {
   return url.includes('render.com') ? 'Production Cloud (Render)' : 'Serveur Local (Dev)'
 })
 
+const pendingCount = computed(() => usersList.value.filter((u) => !u.is_active).length)
+const activeCount = computed(() => usersList.value.filter((u) => u.is_active).length)
+
+const filteredUsers = computed(() => {
+  return usersList.value.filter((u) => {
+    if (activeFilter.value === 'pending' && u.is_active) return false
+    if (activeFilter.value === 'active' && !u.is_active) return false
+
+    if (userSearchQuery.value.trim()) {
+      const q = userSearchQuery.value.trim().toLowerCase()
+      const nom = (u.nom || '').toLowerCase()
+      const prenom = (u.prenom || '').toLowerCase()
+      const email = (u.email || '').toLowerCase()
+      const numero = (u.numero || '').toLowerCase()
+      if (!nom.includes(q) && !prenom.includes(q) && !email.includes(q) && !numero.includes(q)) {
+        return false
+      }
+    }
+    return true
+  })
+})
+
 function formatPrice(val) {
   if (!val && val !== 0) return '0 Ar'
   return Math.round(val).toLocaleString('fr-FR') + ' Ar'
+}
+
+function formatDate(isoStr) {
+  if (!isoStr) return ''
+  try {
+    const d = new Date(isoStr)
+    return d.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+  } catch {
+    return ''
+  }
+}
+
+function selectFilter(filter) {
+  hasUserManuallySelectedFilter.value = true
+  activeFilter.value = filter
 }
 
 async function loadData() {
@@ -181,46 +330,152 @@ async function loadData() {
       profileStats.value = res.data.statistiques
     }
   } catch (e) {
-    console.error(e)
+    console.error('Erreur chargement statistiques profil:', e)
   }
 
   if (isSuperAdmin.value) {
-    loadUsers()
+    await loadUsers()
   }
 }
 
 async function loadUsers() {
+  usersLoading.value = true
   try {
     const res = await apiClient.get('/auth/users/')
     usersList.value = res.data.results || res.data || []
+    if (pendingCount.value > 0 && !hasUserManuallySelectedFilter.value) {
+      activeFilter.value = 'pending'
+    }
   } catch (e) {
     console.error('Erreur users:', e)
+  } finally {
+    usersLoading.value = false
   }
 }
 
 async function approveUser(u) {
+  if (loadingUserId.value) return
+  loadingUserId.value = u.id
+
   try {
-    await apiClient.post(`/auth/users/${u.id}/approve/`)
+    const res = await apiClient.post(`/auth/users/${u.id}/approve/`)
     const toast = await toastController.create({
-      message: `Compte de ${u.prenom} validé avec succès.`,
-      duration: 2000,
+      message: res.data?.message || `Compte de ${u.prenom} validé avec succès !`,
+      duration: 2500,
       color: 'success',
       position: 'top',
     })
     await toast.present()
-    loadUsers()
+    await loadUsers()
   } catch (e) {
-    alert("Erreur lors de l'approbation.")
+    console.error('Erreur approbation inscription:', e)
+    const errorMsg =
+      e.response?.data?.error ||
+      e.response?.data?.detail ||
+      "Erreur lors de la validation du compte. Vérifiez votre connexion."
+    const toast = await toastController.create({
+      message: errorMsg,
+      duration: 3500,
+      color: 'danger',
+      position: 'top',
+    })
+    await toast.present()
+  } finally {
+    loadingUserId.value = null
   }
 }
 
+async function rejectUser(u) {
+  if (loadingUserId.value) return
+  const alert = await alertController.create({
+    header: "Refuser l'inscription",
+    message: `Êtes-vous sûr de vouloir refuser et supprimer la demande de ${u.prenom} ${u.nom} (${u.email}) ?`,
+    buttons: [
+      { text: 'Annuler', role: 'cancel' },
+      {
+        text: 'Refuser et supprimer',
+        role: 'destructive',
+        handler: async () => {
+          loadingUserId.value = u.id
+          try {
+            await apiClient.delete(`/auth/users/${u.id}/`)
+            const toast = await toastController.create({
+              message: `Demande de ${u.prenom} ${u.nom} refusée et supprimée.`,
+              duration: 2500,
+              color: 'warning',
+              position: 'top',
+            })
+            await toast.present()
+            await loadUsers()
+          } catch (e) {
+            console.error('Erreur refus:', e)
+            const errorMsg =
+              e.response?.data?.error ||
+              e.response?.data?.detail ||
+              "Erreur lors du refus de l'inscription."
+            const toast = await toastController.create({
+              message: errorMsg,
+              duration: 3500,
+              color: 'danger',
+              position: 'top',
+            })
+            await toast.present()
+          } finally {
+            loadingUserId.value = null
+          }
+        },
+      },
+    ],
+  })
+  await alert.present()
+}
+
 async function toggleUserActive(u) {
-  try {
-    await apiClient.post(`/auth/users/${u.id}/toggle-active/`)
-    loadUsers()
-  } catch (e) {
-    // fallback
-  }
+  if (loadingUserId.value) return
+  const willDeactivate = u.is_active
+  const alert = await alertController.create({
+    header: willDeactivate ? "Désactiver l'accès" : "Réactiver l'accès",
+    message: willDeactivate
+      ? `Êtes-vous sûr de vouloir désactiver le compte de ${u.prenom} ${u.nom} ? Il ne pourra plus se connecter.`
+      : `Voulez-vous réactiver le compte de ${u.prenom} ${u.nom} ?`,
+    buttons: [
+      { text: 'Annuler', role: 'cancel' },
+      {
+        text: willDeactivate ? 'Désactiver' : 'Réactiver',
+        role: willDeactivate ? 'destructive' : undefined,
+        handler: async () => {
+          loadingUserId.value = u.id
+          try {
+            const res = await apiClient.post(`/auth/users/${u.id}/toggle_active/`)
+            const toast = await toastController.create({
+              message: res.data?.message || 'Statut mis à jour avec succès.',
+              duration: 2500,
+              color: 'success',
+              position: 'top',
+            })
+            await toast.present()
+            await loadUsers()
+          } catch (e) {
+            console.error('Erreur toggle active:', e)
+            const errorMsg =
+              e.response?.data?.error ||
+              e.response?.data?.detail ||
+              'Erreur lors du changement de statut.'
+            const toast = await toastController.create({
+              message: errorMsg,
+              duration: 3500,
+              color: 'danger',
+              position: 'top',
+            })
+            await toast.present()
+          } finally {
+            loadingUserId.value = null
+          }
+        },
+      },
+    ],
+  })
+  await alert.present()
 }
 
 async function handleRefresh(event) {
@@ -253,6 +508,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
 .main-toolbar {
   --background: #0B1120;
   --color: #FFFFFF;
@@ -415,6 +679,170 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-refresh-sm:active {
+  transform: scale(0.95);
+}
+
+/* Pending Alert Banner */
+.pending-alert-banner {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.banner-icon {
+  font-size: 1.4rem;
+  color: #F59E0B;
+  flex-shrink: 0;
+}
+
+.banner-texts {
+  display: flex;
+  flex-direction: column;
+}
+
+.banner-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #FDE68A;
+}
+
+.banner-sub {
+  font-size: 0.68rem;
+  color: #D97706;
+}
+
+.banner-quick-btn {
+  background: #F59E0B;
+  color: #0F172A;
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Filter Bar */
+.admin-filter-bar {
+  display: flex;
+  background: #0B1120;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.filter-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 7px 4px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.filter-btn.active {
+  background: #1E293B;
+  color: #FFFFFF;
+}
+
+.filter-btn.active.pending {
+  background: rgba(245, 158, 11, 0.25);
+  color: #FBBF24;
+}
+
+.filter-badge {
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 9999px;
+  color: inherit;
+}
+
+.filter-badge.pending {
+  background: #F59E0B;
+  color: #0F172A;
+  font-weight: 800;
+}
+
+/* Search bar */
+.admin-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.search-icon-sm {
+  position: absolute;
+  left: 10px;
+  font-size: 1rem;
+  color: #64748B;
+  pointer-events: none;
+}
+
+.admin-search-input {
+  width: 100%;
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 30px 8px 32px;
+  color: #FFFFFF;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.admin-search-input:focus {
+  border-color: #0D9488;
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #64748B;
+  font-size: 0.8rem;
+  padding: 4px;
+}
+
+.empty-users {
+  padding: 24px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #64748B;
+  font-size: 0.8rem;
+}
+
+.empty-icon {
+  font-size: 2rem;
+  color: #334155;
 }
 
 .users-mobile-list {
@@ -427,13 +855,21 @@ onMounted(() => {
   background: #0B1120;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
 }
 
 .u-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 6px;
+}
+
+.u-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .u-name {
@@ -442,10 +878,19 @@ onMounted(() => {
   color: #FFFFFF;
 }
 
+.u-role-pill {
+  font-size: 0.65rem;
+  background: rgba(255, 255, 255, 0.07);
+  color: #94A3B8;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+
 .u-status-badge {
   font-size: 0.68rem;
   padding: 2px 6px;
   border-radius: 4px;
+  font-weight: 600;
 }
 
 .u-status-badge.active {
@@ -458,11 +903,21 @@ onMounted(() => {
   color: #FBBF24;
 }
 
-.u-meta {
+.u-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.u-meta-line {
   font-size: 0.72rem;
   color: #94A3B8;
-  display: block;
-  margin: 3px 0 8px 0;
+}
+
+.u-date {
+  color: #64748B;
+  font-size: 0.68rem;
 }
 
 .u-actions {
@@ -473,19 +928,31 @@ onMounted(() => {
 .btn-u-action {
   flex: 1;
   border: none;
-  padding: 6px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 0.78rem;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-u-action:active {
+  transform: scale(0.98);
 }
 
 .btn-u-action.approve {
-  background: #10B981;
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
   color: #FFFFFF;
+}
+
+.btn-u-action.reject {
+  flex: 0 0 90px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #F87171;
 }
 
 .btn-u-action.deactivate {

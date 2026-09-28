@@ -171,7 +171,32 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
             'message': f"Le mot de passe de {target_user.prenom} {target_user.nom} a été réinitialisé avec succès."
         })
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve(self, request, pk=None):
+        if not self._check_admin(request.user):
+            return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
+
+        target_user = self.get_object()
+        target_user.is_active = True
+
+        # S'assurer qu'un rôle est attribué s'il n'en a pas
+        if not target_user.role:
+            default_role, _ = Role.objects.get_or_create(
+                nom='media_buyer',
+                defaults={'label': 'Media Buyer', 'point': 10}
+            )
+            target_user.role = default_role
+
+        target_user.save()
+
+        return Response({
+            'status': 'success',
+            'is_active': True,
+            'user': UtilisateurSerializer(target_user).data,
+            'message': f"Le compte de {target_user.prenom} {target_user.nom} a été validé avec succès."
+        })
+
+    @action(detail=True, methods=['post'], url_path='toggle_active')
     def toggle_active(self, request, pk=None):
         if not self._check_admin(request.user):
             return Response({'error': "Action réservée aux administrateurs."}, status=status.HTTP_403_FORBIDDEN)
@@ -189,6 +214,10 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
             'user': UtilisateurSerializer(target_user).data,
             'message': f"Le compte de {target_user.prenom} {target_user.nom} est maintenant {status_label}."
         })
+
+    @action(detail=True, methods=['post'], url_path='toggle-active')
+    def toggle_active_alias(self, request, pk=None):
+        return self.toggle_active(request, pk=pk)
 
     @action(detail=True, methods=['post'], url_path='change-role')
     def change_role(self, request, pk=None):
