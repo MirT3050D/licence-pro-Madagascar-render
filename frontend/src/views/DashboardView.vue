@@ -24,17 +24,19 @@
             <span>Vendeur / Affilié</span>
           </label>
           <div class="vendor-input-group">
-            <select v-model="filters.vendeur" @change="loadDashboard" class="form-select select-dash-vendor">
-              <option value="">👥 Toute l'équipe (Global)</option>
-              <option v-for="u in vendorsList" :key="u.id" :value="u.id">
-                👤 {{ u.prenom }} {{ u.nom }} ({{ u.role?.label || 'Vendeur' }})
-              </option>
-            </select>
+            <SearchableSelect
+              v-model="filters.vendeur"
+              :options="vendorFilterOptions"
+              placeholder="👥 Toute l'équipe (Global)"
+              search-placeholder="Rechercher un vendeur..."
+              compact
+              @change="loadDashboard"
+            />
             <button
               v-if="user?.id"
               type="button"
               @click="toggleMyDashboard"
-              class="btn btn-xs"
+              class="btn btn-xs btn-my-shortcut"
               :class="filters.vendeur === user.id ? 'btn-primary' : 'btn-secondary'"
               title="Filtrer sur mon compte uniquement"
             >
@@ -134,15 +136,19 @@
         </div>
 
         <!-- 4. CLIENT -->
-        <div class="filter-group-dash">
+        <div class="filter-group-dash filter-client-dash">
           <label class="filter-label-dash">
             <User :size="14" class="text-primary" />
             <span>Client</span>
           </label>
-          <select v-model="filters.client" @change="loadDashboard" class="form-select select-dash">
-            <option value="">Tous les clients</option>
-            <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.nom }}</option>
-          </select>
+          <SearchableSelect
+            v-model="filters.client"
+            :options="clientFilterOptions"
+            placeholder="Tous les clients"
+            search-placeholder="Rechercher client (nom, tél)..."
+            compact
+            @change="loadDashboard"
+          />
         </div>
 
         <!-- 5. PROVENANCE (MULTI-SÉLECTION) -->
@@ -494,14 +500,50 @@
     <div class="bottom-grid">
       <!-- Top 5 Products -->
       <div class="card">
-        <div class="section-title-box">
+        <div class="section-title-box dash-section-header">
           <div class="title-with-icon">
             <Package :size="20" class="text-primary" />
             <h3>Top Produits</h3>
+            <span class="badge badge-neutral badge-xs">{{ sortedFilteredProducts.length }}</span>
+          </div>
+
+          <!-- Tools: Search + Sort toggles -->
+          <div class="table-tools-row">
+            <div class="table-search-box">
+              <Search :size="13" class="search-ic text-muted" />
+              <input
+                v-model="productSearch"
+                type="text"
+                placeholder="Filtrer produit..."
+                class="table-search-input"
+              />
+              <button v-if="productSearch" @click="productSearch = ''" class="btn-clear-search-sm">✕</button>
+            </div>
+            <div class="top-prod-sort-btns">
+              <button
+                type="button"
+                class="btn-sort-pill"
+                :class="{ active: topProdSort === 'ca' }"
+                @click="topProdSort = 'ca'"
+                title="Trier par chiffre d'affaires"
+              >
+                Par CA
+              </button>
+              <button
+                type="button"
+                class="btn-sort-pill"
+                :class="{ active: topProdSort === 'qty' }"
+                @click="topProdSort = 'qty'"
+                title="Trier par volume vendu"
+              >
+                Par Quantité
+              </button>
+            </div>
           </div>
         </div>
-        <div v-if="data?.top_produits?.length" class="top-products-list">
-          <div v-for="(prod, idx) in data.top_produits" :key="prod.produit__id" class="product-item">
+
+        <div v-if="sortedFilteredProducts.length" class="top-products-list">
+          <div v-for="(prod, idx) in sortedFilteredProducts" :key="prod.produit__id" class="product-item">
             <div class="prod-rank">{{ idx + 1 }}</div>
             <div class="prod-info">
               <span class="prod-name">{{ prod.produit__nom }}</span>
@@ -512,17 +554,32 @@
             </div>
           </div>
         </div>
-        <div v-else class="text-muted text-sm py-4">
-          Aucun produit vendu pour ces critères.
+        <div v-else class="text-muted text-sm py-4 text-center">
+          {{ productSearch ? `Aucun produit trouvé pour "${productSearch}".` : 'Aucun produit vendu pour ces critères.' }}
         </div>
       </div>
 
       <!-- Sellers Points Leaderboard -->
       <div class="card">
-        <div class="section-title-box">
+        <div class="section-title-box dash-section-header">
           <div class="title-with-icon">
             <Award :size="20" class="text-amber" />
             <h3>Classement des Vendeurs</h3>
+            <span class="badge badge-neutral badge-xs">{{ filteredSellers.length }} commercial(aux)</span>
+          </div>
+
+          <!-- Search & Controls for Leaderboard -->
+          <div class="table-tools-row">
+            <div class="table-search-box">
+              <Search :size="13" class="search-ic text-muted" />
+              <input
+                v-model="sellerSearch"
+                type="text"
+                placeholder="Rechercher vendeur..."
+                class="table-search-input"
+              />
+              <button v-if="sellerSearch" @click="sellerSearch = ''" class="btn-clear-search-sm">✕</button>
+            </div>
           </div>
         </div>
 
@@ -530,18 +587,43 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Rang</th>
-                <th>Vendeur / Affilié</th>
-                <th>Chiffre d'Affaires</th>
-                <th>Ventes</th>
-                <th>Habilitation</th>
+                <th class="cursor-pointer select-none" @click="toggleSellerSort('rank')">
+                  <div class="th-sort-wrap">
+                    <span>Rang</span>
+                    <ArrowUpDown :size="12" class="sort-icon" />
+                  </div>
+                </th>
+                <th class="cursor-pointer select-none" @click="toggleSellerSort('name')">
+                  <div class="th-sort-wrap">
+                    <span>Vendeur / Affilié</span>
+                    <ArrowUpDown :size="12" class="sort-icon" />
+                  </div>
+                </th>
+                <th class="cursor-pointer select-none" @click="toggleSellerSort('ca')">
+                  <div class="th-sort-wrap">
+                    <span>Chiffre d'Affaires</span>
+                    <ArrowUpDown :size="12" class="sort-icon" />
+                  </div>
+                </th>
+                <th class="cursor-pointer select-none" @click="toggleSellerSort('sales')">
+                  <div class="th-sort-wrap">
+                    <span>Ventes</span>
+                    <ArrowUpDown :size="12" class="sort-icon" />
+                  </div>
+                </th>
+                <th class="cursor-pointer select-none" @click="toggleSellerSort('points')">
+                  <div class="th-sort-wrap">
+                    <span>Habilitation</span>
+                    <ArrowUpDown :size="12" class="sort-icon" />
+                  </div>
+                </th>
                 <th style="text-align: right;">Action</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(vendeur, idx) in data?.classement_vendeurs || []" :key="vendeur.id">
+              <tr v-for="(vendeur, idx) in sortedFilteredSellers" :key="vendeur.id">
                 <td>
-                  <span class="rank-pill" :class="'rank-' + (idx + 1)">#{{ idx + 1 }}</span>
+                  <span class="rank-pill" :class="'rank-' + (vendeur.originalRank || idx + 1)">#{{ vendeur.originalRank || idx + 1 }}</span>
                 </td>
                 <td>
                   <div class="font-bold">{{ vendeur.nom_complet }}</div>
@@ -566,9 +648,9 @@
                   </router-link>
                 </td>
               </tr>
-              <tr v-if="!data?.classement_vendeurs?.length">
+              <tr v-if="!sortedFilteredSellers.length">
                 <td colspan="6" class="text-center py-4 text-muted">
-                  Aucun vendeur trouvé.
+                  {{ sellerSearch ? `Aucun vendeur trouvé pour "${sellerSearch}".` : 'Aucun vendeur trouvé.' }}
                 </td>
               </tr>
             </tbody>
@@ -718,7 +800,11 @@ import {
   Megaphone,
   Sliders,
   Check,
-  X
+  X,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  Search
 } from '@lucide/vue'
 import {
   Chart as ChartJS,
@@ -736,6 +822,7 @@ import { Line, Doughnut } from 'vue-chartjs'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
 import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
+import SearchableSelect from '../components/SearchableSelect.vue'
 import { getProvenanceStyle } from '../utils/provenanceHelper'
 
 const { user, isSuperAdmin } = useAuth()
@@ -767,6 +854,101 @@ const filters = ref({
   methodes_paiement: [],
   client: '',
   provenances: [],
+})
+
+// Search & Sort state for Dashboard components
+const sellerSearch = ref('')
+const sellerSortField = ref('rank') // 'rank', 'name', 'ca', 'sales', 'points'
+const sellerSortDir = ref('asc') // 'asc' or 'desc'
+
+const productSearch = ref('')
+const topProdSort = ref('ca') // 'ca' or 'qty'
+
+const vendorFilterOptions = computed(() => {
+  const list = [{ id: '', label: "👥 Toute l'équipe (Global)" }]
+  vendorsList.value.forEach(u => {
+    list.push({
+      id: u.id,
+      label: `${u.prenom} ${u.nom}`,
+      subtitle: u.role?.label || 'Vendeur'
+    })
+  })
+  return list
+})
+
+const clientFilterOptions = computed(() => {
+  const list = [{ id: '', label: 'Tous les clients' }]
+  clientsList.value.forEach(c => {
+    list.push({
+      id: c.id,
+      label: c.nom,
+      subtitle: c.numero || c.email || (c.provenance?.label ? `🌐 ${c.provenance.label}` : '')
+    })
+  })
+  return list
+})
+
+function toggleSellerSort(field) {
+  if (sellerSortField.value === field) {
+    sellerSortDir.value = sellerSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sellerSortField.value = field
+    sellerSortDir.value = (field === 'ca' || field === 'sales' || field === 'points') ? 'desc' : 'asc'
+  }
+}
+
+const filteredSellers = computed(() => {
+  const raw = data.value?.classement_vendeurs || []
+  if (!sellerSearch.value.trim()) {
+    return raw.map((v, i) => ({ ...v, originalRank: i + 1 }))
+  }
+  const q = sellerSearch.value.trim().toLowerCase()
+  return raw
+    .map((v, i) => ({ ...v, originalRank: i + 1 }))
+    .filter(v => {
+      const name = (v.nom_complet || '').toLowerCase()
+      const email = (v.email || '').toLowerCase()
+      const role = (v.role || '').toLowerCase()
+      return name.includes(q) || email.includes(q) || role.includes(q)
+    })
+})
+
+const sortedFilteredSellers = computed(() => {
+  const list = [...filteredSellers.value]
+  const field = sellerSortField.value
+  const factor = sellerSortDir.value === 'asc' ? 1 : -1
+
+  return list.sort((a, b) => {
+    switch (field) {
+      case 'rank':
+        return ((a.originalRank || 0) - (b.originalRank || 0)) * factor
+      case 'name':
+        return (a.nom_complet || '').localeCompare(b.nom_complet || '') * factor
+      case 'ca':
+        return ((Number(a.chiffre_affaires) || 0) - (Number(b.chiffre_affaires) || 0)) * factor
+      case 'sales':
+        return ((Number(a.nombre_ventes) || 0) - (Number(b.nombre_ventes) || 0)) * factor
+      case 'points':
+        return ((Number(a.points) || 0) - (Number(b.points) || 0)) * factor
+      default:
+        return 0
+    }
+  })
+})
+
+const sortedFilteredProducts = computed(() => {
+  const raw = data.value?.top_produits || []
+  let list = [...raw]
+  if (productSearch.value.trim()) {
+    const q = productSearch.value.trim().toLowerCase()
+    list = list.filter(p => (p.produit__nom || '').toLowerCase().includes(q))
+  }
+  if (topProdSort.value === 'qty') {
+    list.sort((a, b) => (Number(b.total_quantite) || 0) - (Number(a.total_quantite) || 0))
+  } else {
+    list.sort((a, b) => (Number(b.total_ca) || 0) - (Number(a.total_ca) || 0))
+  }
+  return list
 })
 
 const data = ref({
@@ -1957,5 +2139,129 @@ onMounted(async () => {
   gap: 0.75rem;
   padding-top: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Dashboard Filter & Leaderboard Search/Sort Styles */
+.filter-vendor-dash .vendor-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.filter-vendor-dash :deep(.searchable-select) {
+  flex: 1;
+  min-width: 180px;
+}
+
+.filter-client-dash :deep(.searchable-select) {
+  min-width: 170px;
+}
+
+.btn-my-shortcut {
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+}
+
+.dash-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+
+.table-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.table-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.table-search-box .search-ic {
+  position: absolute;
+  left: 0.6rem;
+  pointer-events: none;
+}
+
+.table-search-input {
+  background: var(--bg-input, rgba(10, 20, 36, 0.8));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.35rem 1.6rem 0.35rem 1.7rem;
+  font-size: 0.78rem;
+  color: #fff;
+  outline: none;
+  min-width: 140px;
+  max-width: 180px;
+  transition: all 0.2s ease;
+}
+
+.table-search-input:focus {
+  border-color: var(--primary, #00d2ff);
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.2);
+}
+
+.btn-clear-search-sm {
+  position: absolute;
+  right: 0.4rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.th-sort-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.th-sort-wrap .sort-icon {
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+th:hover .th-sort-wrap .sort-icon {
+  opacity: 1;
+  color: var(--primary, #00d2ff);
+}
+
+.top-prod-sort-btns {
+  display: flex;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.btn-sort-pill {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-sort-pill.active {
+  background: rgba(0, 210, 255, 0.15);
+  color: var(--primary, #00d2ff);
 }
 </style>

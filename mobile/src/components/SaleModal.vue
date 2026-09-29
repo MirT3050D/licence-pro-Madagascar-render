@@ -167,12 +167,27 @@
             @click="selectedPaymentMethodId = pm.id"
           >
             <span class="pm-name">{{ pm.label }}</span>
-            <span v-if="pm.details" class="pm-detail">{{ pm.details }}</span>
+            <span v-if="pm.details" class="pm-detail">{{ formatPaymentDetail(pm.details) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 5. TOTAL & SOUMISSION -->
+      <!-- 5. N° COMMANDE FOURNISSEUR -->
+      <div class="form-section">
+        <div class="section-title">
+          <span>N° Commande Fournisseur</span>
+          <span class="badge-optional">Optionnel</span>
+        </div>
+        <input
+          v-model="supplierOrderNumber"
+          type="text"
+          placeholder="Ex: ORD-89412, FRN-2024-X..."
+          class="mobile-input font-mono"
+        />
+        <p class="field-hint-mobile">Utile en cas de réclamation ou garantie auprès du fournisseur.</p>
+      </div>
+
+      <!-- 6. TOTAL & SOUMISSION -->
       <div class="total-summary-card">
         <div class="summary-line">
           <span>Nombre d'articles :</span>
@@ -272,6 +287,7 @@ function getLocalDateTimeString(date = new Date()) {
 const saleDate = ref(getLocalDateTimeString())
 const selectedClientId = ref('')
 const selectedPaymentMethodId = ref('')
+const supplierOrderNumber = ref('')
 const orderArticles = ref([{ produit_id: '', quantite: 1, prix_unitaire: 0 }])
 
 const isEditing = computed(() => !!props.saleToEdit)
@@ -370,10 +386,17 @@ async function loadReferenceData() {
   }
 }
 
+function formatPaymentDetail(details) {
+  if (!details) return ''
+  const firstLine = details.split('\n')[0].trim()
+  return firstLine.length > 35 ? firstLine.slice(0, 32) + '...' : firstLine
+}
+
 function populateFromSale(sale) {
   selectedClientId.value = sale.client?.id || ''
   selectedPaymentMethodId.value = sale.methode_paiement?.id || (paymentMethods.value[0]?.id || '')
   saleDate.value = sale.date ? getLocalDateTimeString(new Date(sale.date)) : getLocalDateTimeString()
+  supplierOrderNumber.value = sale.numero_commande_fournisseur || ''
 
   if (sale.commandes && sale.commandes.length > 0) {
     orderArticles.value = sale.commandes.map((cmd) => {
@@ -404,6 +427,7 @@ function resetForm() {
   selectedClientId.value = clients.value[0]?.id || ''
   selectedPaymentMethodId.value = paymentMethods.value[0]?.id || ''
   saleDate.value = getLocalDateTimeString()
+  supplierOrderNumber.value = ''
   resetArticlesToDefault()
   showQuickClient.value = false
   newClientForm.value = { nom: '', numero: '', id_provenance: '' }
@@ -518,6 +542,7 @@ async function submitSale() {
       client_id: selectedClientId.value,
       methode_paiement_id: selectedPaymentMethodId.value,
       date: saleDate.value ? new Date(saleDate.value).toISOString() : undefined,
+      numero_commande_fournisseur: supplierOrderNumber.value ? supplierOrderNumber.value.trim() : null,
       articles: orderArticles.value.map((a) => ({
         produit_id: a.produit_id,
         quantite: a.quantite,
@@ -620,6 +645,23 @@ function handleDismiss() {
   padding: 2px 8px;
   border-radius: 9999px;
   font-weight: 600;
+}
+
+.badge-optional {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94A3B8;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+.field-hint-mobile {
+  font-size: 0.73rem;
+  color: #94A3B8;
+  margin-top: 4px;
+  margin-bottom: 0;
+  line-height: 1.3;
 }
 
 .mobile-input,
@@ -799,6 +841,9 @@ function handleDismiss() {
 .pm-detail {
   font-size: 0.7rem;
   color: #94A3B8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .total-summary-card {

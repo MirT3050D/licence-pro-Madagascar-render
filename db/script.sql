@@ -95,6 +95,7 @@ CREATE TABLE vente (
     id_client INTEGER NOT NULL,
     id_user_affilie INTEGER NOT NULL,
     id_methode_paiement INTEGER NOT NULL,
+    numero_commande_fournisseur VARCHAR(100),
     CONSTRAINT fk_vente_client FOREIGN KEY (id_client) 
         REFERENCES client(id) ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT fk_vente_user FOREIGN KEY (id_user_affilie) 
@@ -122,6 +123,7 @@ CREATE INDEX idx_vente_date ON vente(date);
 CREATE INDEX idx_vente_client ON vente(id_client);
 CREATE INDEX idx_vente_user ON vente(id_user_affilie);
 CREATE INDEX idx_vente_paiement ON vente(id_methode_paiement);
+CREATE INDEX idx_vente_num_cmd_fourn ON vente(numero_commande_fournisseur);
 CREATE INDEX idx_commande_vente ON commande(id_vente);
 CREATE INDEX idx_commande_produit ON commande(id_produit);
 CREATE INDEX idx_prix_produit_active ON prix(id_produit, is_active);

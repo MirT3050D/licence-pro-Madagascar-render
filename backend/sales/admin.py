@@ -16,9 +16,9 @@ class MethodePaiementAdmin(admin.ModelAdmin):
 
 @admin.register(Vente)
 class VenteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'date', 'client', 'user_affilie', 'methode_paiement', 'get_total')
+    list_display = ('id', 'numero_commande_fournisseur', 'date', 'client', 'user_affilie', 'methode_paiement', 'get_total')
     list_filter = ('date', 'methode_paiement', 'user_affilie')
-    search_fields = ('client__nom', 'user_affilie__email', 'user_affilie__nom')
+    search_fields = ('client__nom', 'user_affilie__email', 'user_affilie__nom', 'numero_commande_fournisseur')
     inlines = [CommandeInline]
 
     @admin.display(description='Total')

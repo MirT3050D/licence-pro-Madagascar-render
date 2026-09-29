@@ -262,10 +262,15 @@
           <div class="adv-filter-grid-2">
             <div class="adv-input-col">
               <label class="adv-lbl">Client spécifique</label>
-              <select v-model="selectedClient" @change="loadDashboardData" class="dash-filter-select">
-                <option value="">👤 Tous les clients</option>
-                <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.nom }}</option>
-              </select>
+              <SearchableSelect
+                v-model="selectedClient"
+                :options="clientFilterOptions"
+                title="Choisir un client"
+                placeholder="👤 Tous les clients"
+                search-placeholder="Rechercher nom, numéro..."
+                allow-clear
+                @change="loadDashboardData"
+              />
             </div>
 
             <div class="adv-input-col">
@@ -420,10 +425,26 @@
       <div class="section-card" v-if="kpiData.top_produits && kpiData.top_produits.length">
         <div class="section-header">
           <h3 class="section-heading">🔥 Top Logiciels Vendus</h3>
+          <div class="mobile-sort-toggle">
+            <button
+              type="button"
+              :class="['btn-m-sort', topProdSort === 'ca' ? 'active' : '']"
+              @click="topProdSort = 'ca'"
+            >
+              Par CA
+            </button>
+            <button
+              type="button"
+              :class="['btn-m-sort', topProdSort === 'qty' ? 'active' : '']"
+              @click="topProdSort = 'qty'"
+            >
+              Par Qté
+            </button>
+          </div>
         </div>
 
         <div class="top-products-list">
-          <div v-for="(prod, pIdx) in kpiData.top_produits" :key="pIdx" class="top-prod-item">
+          <div v-for="(prod, pIdx) in sortedTopProducts" :key="pIdx" class="top-prod-item">
             <div class="prod-rank">{{ pIdx + 1 }}</div>
             <div class="prod-info">
               <span class="prod-title">{{ prod.produit__nom || prod.nom }}</span>
@@ -441,16 +462,46 @@
           <router-link to="/tabs/ventes" class="link-more">Voir tout</router-link>
         </div>
 
+        <!-- Search & Sort for Recent Sales -->
+        <div class="recent-sales-controls" v-if="recentSales.length > 0">
+          <div class="m-search-box">
+            <ion-icon :icon="searchOutline" class="m-search-ic" />
+            <input
+              v-model="recentSalesSearch"
+              type="text"
+              placeholder="Filtrer client, règlement..."
+              class="m-search-input"
+            />
+            <button v-if="recentSalesSearch" @click="recentSalesSearch = ''" class="m-search-clear">✕</button>
+          </div>
+          <div class="mobile-sort-toggle">
+            <button
+              type="button"
+              :class="['btn-m-sort', recentSalesSort === 'date' ? 'active' : '']"
+              @click="recentSalesSort = 'date'"
+            >
+              Récentes
+            </button>
+            <button
+              type="button"
+              :class="['btn-m-sort', recentSalesSort === 'total' ? 'active' : '']"
+              @click="recentSalesSort = 'total'"
+            >
+              Montant
+            </button>
+          </div>
+        </div>
+
         <div v-if="loading" class="empty-state">
           <span>Chargement des données...</span>
         </div>
 
-        <div v-else-if="recentSales.length === 0" class="empty-state">
-          <span>Aucune vente ne correspond aux critères.</span>
+        <div v-else-if="sortedFilteredRecentSales.length === 0" class="empty-state">
+          <span>{{ recentSalesSearch ? `Aucune vente trouvée pour "${recentSalesSearch}".` : 'Aucune vente ne correspond aux critères.' }}</span>
         </div>
 
         <div v-else class="recent-sales-list">
-          <div v-for="sale in recentSales" :key="sale.id" class="recent-sale-row">
+          <div v-for="sale in sortedFilteredRecentSales" :key="sale.id" class="recent-sale-row">
             <div class="sale-client-col">
               <span class="sale-client-nom">{{ sale.client?.nom || 'Client Anonyme' }}</span>
               <span class="sale-date">{{ formatDate(sale.date) }} • {{ sale.methode_paiement?.label || 'Direct' }}</span>
@@ -604,11 +655,13 @@ import {
   optionsOutline,
   chevronDownOutline,
   chevronUpOutline,
+  searchOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
 import SaleModal from '../components/SaleModal.vue'
 import ClientModal from '../components/ClientModal.vue'
+import SearchableSelect from '../components/SearchableSelect.vue'
 
 const { user, isSuperAdmin } = useAuth()
 
@@ -640,6 +693,52 @@ const customDateDebut = ref('')
 const customDateFin = ref('')
 
 const isMoreFiltersOpen = ref(false)
+
+// Dashboard search & sort states
+const topProdSort = ref('ca') // 'ca' or 'qty'
+const recentSalesSearch = ref('')
+const recentSalesSort = ref('date') // 'date' or 'total'
+
+const clientFilterOptions = computed(() => {
+  const list = [{ id: '', label: '👤 Tous les clients' }]
+  clients.value.forEach(c => {
+    list.push({
+      id: c.id,
+      label: c.nom,
+      subtitle: c.numero || c.email || ''
+    })
+  })
+  return list
+})
+
+const sortedTopProducts = computed(() => {
+  const raw = kpiData.value?.top_produits || []
+  const list = [...raw]
+  if (topProdSort.value === 'qty') {
+    list.sort((a, b) => (Number(b.total_quantite) || 0) - (Number(a.total_quantite) || 0))
+  } else {
+    list.sort((a, b) => (Number(b.total_ca) || 0) - (Number(a.total_ca) || 0))
+  }
+  return list
+})
+
+const sortedFilteredRecentSales = computed(() => {
+  let list = [...recentSales.value]
+  if (recentSalesSearch.value.trim()) {
+    const q = recentSalesSearch.value.trim().toLowerCase()
+    list = list.filter(s => {
+      const clientName = (s.client?.nom || '').toLowerCase()
+      const method = (s.methode_paiement?.label || '').toLowerCase()
+      return clientName.includes(q) || method.includes(q)
+    })
+  }
+  if (recentSalesSort.value === 'total') {
+    list.sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0))
+  } else {
+    list.sort((a, b) => (new Date(b.date).getTime() || 0) - (new Date(a.date).getTime() || 0))
+  }
+  return list
+})
 
 const periodOptions = [
   { id: 'all', label: 'Tout' },
@@ -2047,5 +2146,81 @@ onIonViewWillEnter(() => {
 
 .btn-save-config:disabled {
   opacity: 0.6;
+}
+
+/* Mobile Dashboard Search & Sort Controls */
+.mobile-sort-toggle {
+  display: flex;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.btn-m-sort {
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-m-sort.active {
+  background: rgba(13, 148, 136, 0.25);
+  color: #2DD4BF;
+}
+
+.recent-sales-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.m-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 140px;
+}
+
+.m-search-ic {
+  position: absolute;
+  left: 8px;
+  font-size: 14px;
+  color: #64748B;
+  pointer-events: none;
+}
+
+.m-search-input {
+  width: 100%;
+  background: #0B1120;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 26px 6px 28px;
+  font-size: 0.76rem;
+  color: #FFFFFF;
+  outline: none;
+}
+
+.m-search-input:focus {
+  border-color: #0D9488;
+}
+
+.m-search-clear {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #64748B;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px;
 }
 </style>

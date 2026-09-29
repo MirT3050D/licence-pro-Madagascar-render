@@ -39,6 +39,13 @@ class Vente(models.Model):
         db_column='id_methode_paiement',
         related_name='ventes'
     )
+    numero_commande_fournisseur = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        db_column='numero_commande_fournisseur',
+        verbose_name="Numéro de commande fournisseur"
+    )
 
     class Meta:
         db_table = 'vente'
@@ -49,10 +56,20 @@ class Vente(models.Model):
             models.Index(fields=['client'], name='idx_vente_client'),
             models.Index(fields=['user_affilie'], name='idx_vente_user'),
             models.Index(fields=['methode_paiement'], name='idx_vente_paiement'),
+            models.Index(fields=['numero_commande_fournisseur'], name='idx_vente_num_cmd_fourn'),
         ]
 
     def __str__(self):
-        return f"Vente #{self.id} - {self.client.nom} ({self.date.strftime('%d/%m/%Y %H:%M')})"
+        cmd_info = f" [Cmd: {self.numero_commande_fournisseur}]" if self.numero_commande_fournisseur else ""
+        return f"Vente #{self.id}{cmd_info} - {self.client.nom} ({self.date.strftime('%d/%m/%Y %H:%M')})"
+
+    @property
+    def numero_commande(self):
+        return self.numero_commande_fournisseur
+
+    @numero_commande.setter
+    def numero_commande(self, value):
+        self.numero_commande_fournisseur = value
 
     @property
     def total(self):

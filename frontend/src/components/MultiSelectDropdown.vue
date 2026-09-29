@@ -190,7 +190,7 @@ const dropdownRef = ref(null)
 const searchInputRef = ref(null)
 
 const showSearchInput = computed(() => {
-  return props.searchable && props.options.length > 5
+  return props.searchable && props.options.length > 1
 })
 
 const selectedCount = computed(() => {

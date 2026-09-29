@@ -124,6 +124,7 @@ class VenteViewSet(viewsets.ModelViewSet):
                 Q(client__nom__icontains=search) |
                 Q(client__numero__icontains=search) |
                 Q(client__provenance__label__icontains=search) |
+                Q(numero_commande_fournisseur__icontains=search) |
                 Q(id__icontains=search)
             )
 
@@ -137,7 +138,8 @@ class VenteViewSet(viewsets.ModelViewSet):
                 'client__provenance__label', '-client__provenance__label',
                 'user_affilie__nom', '-user_affilie__nom',
                 'user_affilie__prenom', '-user_affilie__prenom',
-                'methode_paiement__label', '-methode_paiement__label'
+                'methode_paiement__label', '-methode_paiement__label',
+                'numero_commande_fournisseur', '-numero_commande_fournisseur'
             ]
             if ordering in allowed:
                 return qs.order_by(ordering)
@@ -166,20 +168,21 @@ class VenteViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         user = request.user
+        instance = self.get_object()
         is_admin = (
             user.is_staff or 
             user.is_superuser or 
             (user.role and user.role.point >= 50) or 
             (user.role and user.role.nom == 'admin')
         )
-        if not is_admin:
+        is_owner = (instance.user_affilie_id == user.id)
+        if not (is_admin or is_owner):
             return Response(
-                {"error": "Permission refusée. Seul un administrateur (niveau 50) peut modifier des ventes."},
+                {"error": "Permission refusée. Seul un administrateur ou le vendeur affilié de cette vente peut la modifier."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
         partial = kwargs.pop('partial', False)
-        instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial, context={'request': request})
         serializer.is_valid(raise_exception=True)
         vente = serializer.save()

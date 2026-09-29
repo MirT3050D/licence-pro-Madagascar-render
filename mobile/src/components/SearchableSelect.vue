@@ -14,7 +14,7 @@
         <span v-else class="mss-placeholder">
           {{ placeholder }}
         </span>
-        <span v-if="selectedOption && getSubtitle(selectedOption)" class="mss-badge-subtitle">
+        <span v-if="selectedOption && getSubtitle(selectedOption) && !hideSubtitleInTrigger" class="mss-badge-subtitle">
           {{ getSubtitle(selectedOption) }}
         </span>
       </div>
@@ -172,6 +172,10 @@ const props = defineProps({
     type: String,
     default: 'subtitle',
   },
+  hideSubtitleInTrigger: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -300,6 +304,8 @@ function clearSelection() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 100%;
 }
 
 .mss-placeholder {
@@ -316,7 +322,10 @@ function clearSelection() {
   padding: 2px 6px;
   border-radius: 6px;
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  flex-shrink: 1;
 }
 
 .mss-trigger-right {

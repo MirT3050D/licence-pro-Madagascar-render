@@ -97,7 +97,7 @@
                 <span class="badge-status">Conclue</span>
               </div>
               <button
-                v-if="isSuperAdmin"
+                v-if="canEditSale(sale)"
                 type="button"
                 class="btn-edit-badge"
                 @click.stop="openEditSale(sale)"
@@ -117,6 +117,10 @@
             >
               {{ cmd.quantite }}x {{ cmd.produit_nom }}
             </span>
+            <span v-if="sale.numero_commande_fournisseur" class="item-tag supplier-order-tag" :title="'N° commande fournisseur : ' + sale.numero_commande_fournisseur">
+              <ion-icon :icon="pricetagOutline" class="tag-icon-sm" />
+              <span>Fourn: {{ sale.numero_commande_fournisseur }}</span>
+            </span>
           </div>
 
           <!-- Expanded details & activation guide -->
@@ -134,10 +138,25 @@
                   📞 {{ sale.client.numero }}
                 </a>
               </div>
+              <div class="detail-row">
+                <span class="lbl">Cmd Fournisseur :</span>
+                <span v-if="sale.numero_commande_fournisseur" class="val supplier-val">
+                  <span class="font-mono font-bold">{{ sale.numero_commande_fournisseur }}</span>
+                  <button type="button" @click.stop="copySupplierNumber(sale.numero_commande_fournisseur)" class="btn-copy-mini-chip" title="Copier le numéro">
+                    <ion-icon :icon="copyOutline" />
+                  </button>
+                </span>
+                <span v-else class="val text-muted italic flex-inline items-center gap-1">
+                  Non renseigné
+                  <button v-if="canEditSale(sale)" type="button" @click.stop="openEditSale(sale)" class="btn-inline-add-mobile">
+                    + Ajouter
+                  </button>
+                </span>
+              </div>
             </div>
 
             <!-- Action Modifier la vente -->
-            <div v-if="isSuperAdmin" class="card-edit-action-box">
+            <div v-if="canEditSale(sale)" class="card-edit-action-box">
               <button
                 type="button"
                 @click.stop="openEditSale(sale)"
@@ -207,12 +226,13 @@ import {
   cartOutline,
   copyOutline,
   createOutline,
+  pricetagOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
 import SaleModal from '../components/SaleModal.vue'
 
-const { isSuperAdmin } = useAuth()
+const { user, isSuperAdmin } = useAuth()
 
 const loading = ref(false)
 const sales = ref([])
@@ -255,18 +275,29 @@ function toggleExpand(id) {
   expandedSaleId.value = expandedSaleId.value === id ? null : id
 }
 
+function canEditSale(sale) {
+  if (!sale) return false
+  return isSuperAdmin.value || (user.value?.id && (sale.user_affilie?.id === user.value.id || sale.user_affilie === user.value.id))
+}
+
 function openNewSale() {
   saleToEdit.value = null
   isSaleModalOpen.value = true
 }
 
 function openEditSale(sale) {
-  if (!isSuperAdmin.value) {
-    showToast("Seul un administrateur peut modifier une vente.", 'warning')
+  if (!canEditSale(sale)) {
+    showToast("Vous devez être administrateur ou l'auteur de cette vente pour la modifier.", 'warning')
     return
   }
   saleToEdit.value = sale
   isSaleModalOpen.value = true
+}
+
+async function copySupplierNumber(num) {
+  if (!num) return
+  await navigator.clipboard.writeText(num)
+  showToast('N° commande fournisseur copié !', 'success')
 }
 
 function onCloseSaleModal() {
@@ -612,6 +643,50 @@ onMounted(() => {
   padding: 3px 8px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.supplier-order-tag {
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.3);
+  color: #5EEAD4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-icon-sm {
+  font-size: 11px;
+}
+
+.supplier-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5EEAD4;
+}
+
+.btn-copy-mini-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #38BDF8;
+  font-size: 13px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.btn-inline-add-mobile {
+  background: none;
+  border: none;
+  color: #38BDF8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 4px;
+  text-decoration: underline;
 }
 
 .expanded-details {

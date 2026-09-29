@@ -389,7 +389,20 @@
           <tbody>
             <tr v-for="vente in sortedSales" :key="vente.id">
               <td>
-                <span class="font-mono font-bold text-primary">#{{ vente.id }}</span>
+                <div class="sale-ref-col">
+                  <span class="font-mono font-bold text-primary">#{{ vente.id }}</span>
+                  <div
+                    v-if="vente.numero_commande_fournisseur"
+                    class="badge badge-xs supplier-badge-table"
+                    :title="'N° commande fournisseur : ' + vente.numero_commande_fournisseur"
+                  >
+                    <Tag :size="10" />
+                    <span class="truncate-tag">{{ vente.numero_commande_fournisseur }}</span>
+                  </div>
+                  <div v-else class="supplier-ref-none" title="Aucun numéro fournisseur renseigné">
+                    <span>Sans n° fourn.</span>
+                  </div>
+                </div>
               </td>
               <td>
                 <span class="text-sm">{{ formatDateTime(vente.date) }}</span>
@@ -432,7 +445,7 @@
                     <FileText :size="14" />
                     <span>Détails & Guides</span>
                   </button>
-                  <button v-if="isSuperAdmin" @click="openEditSaleModal(vente)" class="btn-icon btn-secondary-icon" title="Modifier cette vente">
+                  <button v-if="canEditSale(vente)" @click="openEditSaleModal(vente)" class="btn-icon btn-secondary-icon" title="Modifier cette vente">
                     <Pencil :size="14" />
                   </button>
                   <button v-if="isSuperAdmin" @click="deleteSale(vente)" class="btn-icon btn-danger-icon" title="Supprimer la vente">
@@ -526,6 +539,7 @@
                   :options="paymentMethodOptions"
                   placeholder="-- Choisir le mode de paiement --"
                   search-placeholder="Rechercher mode de paiement..."
+                  hide-subtitle-in-trigger
                   required
                 />
               </div>
@@ -540,6 +554,24 @@
                   search-placeholder="Rechercher un vendeur..."
                 />
               </div>
+            </div>
+
+            <!-- Champ Numéro de commande fournisseur (Optionnel / Réclamation) -->
+            <div class="form-group supplier-order-form-group">
+              <div class="field-label-row">
+                <label class="form-label flex items-center gap-1.5">
+                  <Tag :size="13" class="text-primary" />
+                  <span>N° Commande Fournisseur</span>
+                  <span class="badge badge-secondary badge-xs">Optionnel</span>
+                </label>
+                <span class="field-hint-text">Recommandé pour retrouver la licence et faire une réclamation fournisseur si le client a un souci</span>
+              </div>
+              <input
+                v-model="form.numero_commande_fournisseur"
+                type="text"
+                class="form-input font-mono"
+                placeholder="Ex: CMD-FOURN-98412, ORD-12345, LIC-SUP-012..."
+              />
             </div>
 
             <!-- 2. Section Articles & Licences sous forme de tableau épuré -->
@@ -666,7 +698,7 @@
               <span class="text-xs text-muted">{{ formatDateTime(selectedSale.date) }}</span>
             </div>
             <div class="flex items-center gap-2">
-              <button v-if="isSuperAdmin" @click="openEditSaleModal(selectedSale)" class="btn btn-secondary btn-xs" title="Modifier cette vente">
+              <button v-if="canEditSale(selectedSale)" @click="openEditSaleModal(selectedSale)" class="btn btn-secondary btn-xs" title="Modifier cette vente">
                 <Pencil :size="13" />
                 <span>Modifier</span>
               </button>
@@ -690,6 +722,21 @@
             <div>
               <span class="text-xs text-muted">RÈGLEMENT</span>
               <div><span class="badge badge-primary">{{ selectedSale.methode_paiement?.label }}</span></div>
+            </div>
+            <div>
+              <span class="text-xs text-muted">COMMANDE FOURNISSEUR</span>
+              <div v-if="selectedSale.numero_commande_fournisseur" class="flex items-center gap-1.5 mt-0.5">
+                <span class="badge badge-primary badge-xs font-mono font-bold">{{ selectedSale.numero_commande_fournisseur }}</span>
+                <button @click="copyText(selectedSale.numero_commande_fournisseur, 'N° commande fournisseur copié !')" class="btn-copy-mini" title="Copier le numéro">
+                  <Copy :size="12" />
+                </button>
+              </div>
+              <div v-else class="text-xs text-muted italic flex items-center gap-1 mt-0.5">
+                <span>Non renseigné</span>
+                <button v-if="canEditSale(selectedSale)" @click="openEditSaleModal(selectedSale)" class="text-primary hover:underline font-semibold ml-1 cursor-pointer" title="Ajouter le numéro de commande fournisseur">
+                  + Ajouter
+                </button>
+              </div>
             </div>
             <div>
               <span class="text-xs text-muted">TOTAL RÉGLÉ</span>
@@ -768,7 +815,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Tag
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'
@@ -870,10 +918,16 @@ const form = ref({
   date: getLocalDateTimeString(),
   user_affilie_id: '',
   methode_paiement_id: '',
+  numero_commande_fournisseur: '',
   articles: [
     { produit_id: '', quantite: 1, prix_unitaire: 0 }
   ]
 })
+
+function canEditSale(vente) {
+  if (!vente) return false
+  return isSuperAdmin.value || (user.value?.id && (vente.user_affilie?.id === user.value.id || vente.user_affilie === user.value.id))
+}
 
 const computedTotal = computed(() => {
   return form.value.articles.reduce((acc, line) => {
@@ -935,15 +989,22 @@ const provenanceOptions = computed(() => {
 })
 
 const paymentMethodOptions = computed(() => {
-  return paymentMethods.value.map(m => ({
-    id: m.id,
-    label: m.label,
-    subtitle: m.details || '',
-    color: {
-      dot: '#10b981',
-      text: '#10b981'
+  return paymentMethods.value.map(m => {
+    let sub = ''
+    if (m.details) {
+      const firstLine = m.details.split('\n')[0].trim()
+      sub = firstLine.length > 32 ? firstLine.slice(0, 30) + '...' : firstLine
     }
-  }))
+    return {
+      id: m.id,
+      label: m.label,
+      subtitle: sub,
+      color: {
+        dot: '#10b981',
+        text: '#10b981'
+      }
+    }
+  })
 })
 
 // Tri interactif multicritère
@@ -1294,8 +1355,8 @@ async function openCreateSaleModal() {
 }
 
 function openEditSaleModal(vente) {
-  if (!isSuperAdmin.value) {
-    alert("Permission refusée. Seul un administrateur (niveau 50) peut modifier des ventes.")
+  if (!canEditSale(vente)) {
+    alert("Permission refusée. Seul un administrateur ou l'auteur de cette vente peut la modifier.")
     return
   }
   isEditing.value = true
@@ -1307,6 +1368,7 @@ function openEditSaleModal(vente) {
     date: vente.date ? getLocalDateTimeString(new Date(vente.date)) : getLocalDateTimeString(),
     user_affilie_id: vente.user_affilie?.id || (user.value?.id || ''),
     methode_paiement_id: vente.methode_paiement?.id || '',
+    numero_commande_fournisseur: vente.numero_commande_fournisseur || '',
     articles: vente.commandes?.length
       ? vente.commandes.map(cmd => ({
           produit_id: cmd.produit?.id || cmd.produit,
@@ -1333,6 +1395,7 @@ function resetForm() {
     date: getLocalDateTimeString(),
     user_affilie_id: user.value?.id || '',
     methode_paiement_id: defaultMethod?.id || '',
+    numero_commande_fournisseur: '',
     articles: [
       {
         produit_id: defaultProduct?.id || '',
@@ -1396,6 +1459,7 @@ async function submitCreateSale() {
       user_affilie_id: form.value.user_affilie_id || undefined,
       methode_paiement_id: form.value.methode_paiement_id,
       date: form.value.date ? new Date(form.value.date).toISOString() : undefined,
+      numero_commande_fournisseur: form.value.numero_commande_fournisseur ? form.value.numero_commande_fournisseur.trim() : null,
       articles: form.value.articles.map(a => ({
         produit_id: a.produit_id,
         quantite: a.quantite,
@@ -1440,9 +1504,10 @@ async function deleteSale(vente) {
   }
 }
 
-function copyText(txt) {
+function copyText(txt, msg = "Guide d'activation copié dans le presse-papier !") {
+  if (!txt) return
   navigator.clipboard.writeText(txt)
-  alert("Guide d'activation copié dans le presse-papier !")
+  alert(msg)
 }
 
 function formatPrice(val) {
@@ -2421,5 +2486,94 @@ onMounted(async () => {
   white-space: pre-wrap;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+/* NUMERO COMMANDE FOURNISSEUR STYLES */
+.sale-ref-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.supplier-badge-table {
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.35);
+  color: #5EEAD4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.truncate-tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supplier-ref-none {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.supplier-order-form-group {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.field-hint-text {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.supplier-number-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.btn-copy-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 2px 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-copy-chip:hover {
+  background: rgba(0, 210, 255, 0.2);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-link-action {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  transition: opacity 0.2s;
+}
+
+.btn-link-action:hover {
+  opacity: 0.8;
 }
 </style>

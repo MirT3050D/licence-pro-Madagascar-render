@@ -36,7 +36,7 @@
         
         <div v-if="selectedOption" class="ss-selected-wrap">
           <span class="ss-selected-label">{{ getLabel(selectedOption) }}</span>
-          <span v-if="getSubtitle(selectedOption)" class="ss-selected-subtitle">
+          <span v-if="!hideSubtitleInTrigger && getSubtitle(selectedOption)" class="ss-selected-subtitle">
             {{ getSubtitle(selectedOption) }}
           </span>
         </div>
@@ -186,6 +186,10 @@ const props = defineProps({
   icon: {
     type: [Object, Function],
     default: null,
+  },
+  hideSubtitleInTrigger: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -402,7 +406,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
-  flex-wrap: nowrap;
+  flex: 1;
+  overflow: hidden;
 }
 
 .ss-selected-label {
@@ -411,6 +416,8 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 100%;
 }
 
 .ss-selected-subtitle {
@@ -421,7 +428,10 @@ onBeforeUnmount(() => {
   padding: 0.1rem 0.45rem;
   border-radius: var(--radius-full);
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+  flex-shrink: 1;
 }
 
 .ss-placeholder {

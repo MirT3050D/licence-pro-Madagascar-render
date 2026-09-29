@@ -40,11 +40,13 @@ class VenteSerializer(serializers.ModelSerializer):
     commandes = CommandeSerializer(many=True, read_only=True)
     total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     guides_activation = serializers.SerializerMethodField()
+    numero_commande = serializers.CharField(source='numero_commande_fournisseur', read_only=True)
 
     class Meta:
         model = Vente
         fields = [
             'id', 'date', 'client', 'user_affilie', 'methode_paiement',
+            'numero_commande_fournisseur', 'numero_commande',
             'commandes', 'total', 'guides_activation'
         ]
 
@@ -66,6 +68,8 @@ class VenteCreateSerializer(serializers.Serializer):
     user_affilie_id = serializers.IntegerField(required=False, allow_null=True)
     methode_paiement_id = serializers.IntegerField()
     date = serializers.DateTimeField(required=False, allow_null=True)
+    numero_commande_fournisseur = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    numero_commande = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     articles = CommandeItemInputSerializer(many=True)
 
     def validate_client_id(self, value):
@@ -95,12 +99,18 @@ class VenteCreateSerializer(serializers.Serializer):
         methode = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
         articles_data = validated_data['articles']
         sale_date = validated_data.get('date')
+        numero_cmd = validated_data.get('numero_commande_fournisseur')
+        if numero_cmd is None and 'numero_commande' in validated_data:
+            numero_cmd = validated_data.get('numero_commande')
+        if isinstance(numero_cmd, str):
+            numero_cmd = numero_cmd.strip() or None
 
         with transaction.atomic():
             vente_kwargs = {
                 'client': client,
                 'user_affilie': user_affilie,
                 'methode_paiement': methode,
+                'numero_commande_fournisseur': numero_cmd,
             }
             if sale_date:
                 vente_kwargs['date'] = sale_date
@@ -137,6 +147,15 @@ class VenteCreateSerializer(serializers.Serializer):
             instance.methode_paiement = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
         if 'date' in validated_data and validated_data['date'] is not None:
             instance.date = validated_data['date']
+
+        if 'numero_commande_fournisseur' in validated_data or 'numero_commande' in validated_data:
+            num = validated_data.get('numero_commande_fournisseur')
+            if num is None and 'numero_commande' in validated_data:
+                num = validated_data.get('numero_commande')
+            if isinstance(num, str):
+                instance.numero_commande_fournisseur = num.strip() or None
+            else:
+                instance.numero_commande_fournisseur = num
 
         articles_data = validated_data.get('articles')
 
