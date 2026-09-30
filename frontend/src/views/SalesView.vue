@@ -2256,7 +2256,7 @@ onMounted(async () => {
 
 .sale-modal-card {
   width: 100%;
-  max-width: 860px;
+  max-width: 1100px;
   max-height: 92vh;
   overflow-y: auto;
   background: #0b1526;
@@ -2409,8 +2409,9 @@ onMounted(async () => {
   background: rgba(14, 25, 45, 0.6);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  overflow: hidden;
-  margin-top: 0.25rem;
+  overflow: visible;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .sale-items-header {
@@ -2420,6 +2421,8 @@ onMounted(async () => {
   padding: 0.85rem 1.25rem;
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid var(--border-subtle);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
 }
 
 .sale-items-title {
@@ -2433,9 +2436,9 @@ onMounted(async () => {
 
 .sale-table-head {
   display: grid;
-  grid-template-columns: 1fr 90px 160px 120px 38px;
-  gap: 0.85rem;
-  padding: 0.65rem 1.25rem;
+  grid-template-columns: minmax(380px, 2fr) 95px 175px 135px 42px;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
   background: rgba(6, 13, 25, 0.6);
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   font-size: 0.72rem;
@@ -2449,15 +2452,19 @@ onMounted(async () => {
 .sale-table-body {
   display: flex;
   flex-direction: column;
-  padding: 0.4rem 0;
+  padding: 0.5rem 0;
+  min-height: 110px;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
 }
 
 .sale-table-row {
   display: grid;
-  grid-template-columns: 1fr 90px 160px 120px 38px;
-  gap: 0.85rem;
-  padding: 0.65rem 1.25rem;
+  grid-template-columns: minmax(380px, 2fr) 95px 175px 135px 42px;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
   align-items: center;
+  position: relative;
   transition: background var(--transition-fast);
 }
 
@@ -2465,13 +2472,23 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.sale-table-row:focus-within {
+  z-index: 50;
+}
+
 .cell-product {
   min-width: 0;
+  position: relative;
 }
 
 .cell-product select {
   width: 100% !important;
   box-sizing: border-box !important;
+}
+
+.cell-product .searchable-select .ss-dropdown {
+  min-width: max(100%, 480px);
+  max-width: min(720px, 85vw);
 }
 
 .cell-qty {

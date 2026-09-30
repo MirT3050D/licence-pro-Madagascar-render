@@ -370,6 +370,10 @@ onBeforeUnmount(() => {
   background-color: rgba(14, 28, 50, 0.85);
 }
 
+.searchable-select.is-open {
+  z-index: 100;
+}
+
 .searchable-select.is-open .ss-trigger {
   border-color: var(--primary);
   box-shadow: 0 0 12px rgba(0, 210, 255, 0.2);
@@ -383,9 +387,9 @@ onBeforeUnmount(() => {
 
 /* Compact mode (for table cells, etc.) */
 .ss-trigger-compact {
-  padding: 0.4rem 0.6rem;
-  min-height: 34px;
-  font-size: 0.82rem;
+  padding: 0.45rem 0.75rem;
+  min-height: 38px;
+  font-size: 0.84rem;
   border-radius: var(--radius-sm);
 }
 
@@ -484,12 +488,18 @@ onBeforeUnmount(() => {
   background: #091322;
   border: 1px solid rgba(0, 210, 255, 0.3);
   border-radius: var(--radius-md);
-  box-shadow: 0 14px 35px -5px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 210, 255, 0.15);
+  box-shadow: 0 16px 40px -5px rgba(0, 0, 0, 0.85), 0 0 25px rgba(0, 210, 255, 0.16);
   z-index: 1200;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: ss-scale 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.is-compact .ss-dropdown {
+  min-width: max(100%, 460px);
+  max-width: min(720px, 90vw);
+  right: auto;
 }
 
 /* Search Box */
@@ -561,20 +571,20 @@ onBeforeUnmount(() => {
 
 /* Options List */
 .ss-options-list {
-  max-height: 220px;
+  max-height: 360px;
   overflow-y: auto;
-  padding: 0.35rem;
+  padding: 0.4rem;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .ss-option-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.55rem 0.75rem;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -592,17 +602,18 @@ onBeforeUnmount(() => {
 .ss-option-body {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
   min-width: 0;
+  flex: 1;
 }
 
 .ss-option-label {
-  font-size: 0.84rem;
+  font-size: 0.85rem;
   color: #ffffff;
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .ss-option-item.is-selected .ss-option-label {
@@ -612,10 +623,14 @@ onBeforeUnmount(() => {
 
 .ss-option-subtitle {
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-full);
+  width: fit-content;
+  font-weight: 600;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .ss-check-icon {
