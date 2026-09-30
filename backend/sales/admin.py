@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import MethodePaiement, Vente, Commande, MediaBuyerCommission
+from .models import MethodePaiement, Fournisseur, Vente, Commande, MediaBuyerCommission
 
 
 class CommandeInline(admin.TabularInline):
@@ -14,11 +14,18 @@ class MethodePaiementAdmin(admin.ModelAdmin):
     search_fields = ('label', 'details')
 
 
+@admin.register(Fournisseur)
+class FournisseurAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'contact', 'site_web', 'is_active', 'created_at')
+    list_filter = ('is_active',)
+    search_fields = ('nom', 'contact', 'site_web', 'notes')
+
+
 @admin.register(Vente)
 class VenteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'numero_commande_fournisseur', 'date', 'client', 'user_affilie', 'methode_paiement', 'get_total')
-    list_filter = ('date', 'methode_paiement', 'user_affilie')
-    search_fields = ('client__nom', 'user_affilie__email', 'user_affilie__nom', 'numero_commande_fournisseur')
+    list_display = ('id', 'fournisseur', 'numero_commande_fournisseur', 'date', 'client', 'user_affilie', 'methode_paiement', 'get_total')
+    list_filter = ('date', 'fournisseur', 'methode_paiement', 'user_affilie')
+    search_fields = ('client__nom', 'user_affilie__email', 'user_affilie__nom', 'fournisseur__nom', 'numero_commande_fournisseur')
     inlines = [CommandeInline]
 
     @admin.display(description='Total')

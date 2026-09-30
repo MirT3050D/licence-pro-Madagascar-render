@@ -5,8 +5,14 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Sum, Count, F, DecimalField, ExpressionWrapper, Q
 from django.db.models.functions import TruncDate
-from .models import MethodePaiement, Vente, Commande, MediaBuyerCommission
-from .serializers import MethodePaiementSerializer, VenteSerializer, VenteCreateSerializer, MediaBuyerCommissionSerializer
+from .models import MethodePaiement, Fournisseur, Vente, Commande, MediaBuyerCommission
+from .serializers import (
+    MethodePaiementSerializer,
+    FournisseurSerializer,
+    VenteSerializer,
+    VenteCreateSerializer,
+    MediaBuyerCommissionSerializer,
+)
 from accounts.models import Utilisateur
 from clients.models import Provenance
 
@@ -52,6 +58,52 @@ class MethodePaiementViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(instance).data)
 
 
+class FournisseurViewSet(viewsets.ModelViewSet):
+    queryset = Fournisseur.objects.all().prefetch_related('ventes')
+    serializer_class = FournisseurSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        search = self.request.query_params.get('search') or self.request.query_params.get('q')
+        status_param = self.request.query_params.get('status')
+
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(nom__icontains=search) |
+                Q(contact__icontains=search) |
+                Q(site_web__icontains=search) |
+                Q(notes__icontains=search)
+            )
+
+        if status_param == 'active':
+            qs = qs.filter(is_active=True)
+        elif status_param == 'inactive':
+            qs = qs.filter(is_active=False)
+
+        return qs.order_by('-is_active', 'nom')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        ventes_count = instance.ventes.count()
+        if ventes_count > 0:
+            return Response(
+                {
+                    'error': f"Impossible de supprimer le fournisseur « {instance.nom} » car il est rattaché à {ventes_count} vente(s). Vous pouvez le désactiver à la place."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='toggle-active')
+    def toggle_active(self, request, pk=None):
+        instance = self.get_object()
+        instance.is_active = not instance.is_active
+        instance.save(update_fields=['is_active'])
+        return Response(self.get_serializer(instance).data)
+
+
 def parse_id_list(query_params, *keys):
     """
     Parses comma-separated strings or repeated query parameters into a list of unique integers.
@@ -73,7 +125,7 @@ def parse_id_list(query_params, *keys):
 
 class VenteViewSet(viewsets.ModelViewSet):
     queryset = Vente.objects.all().select_related(
-        'client', 'client__provenance', 'user_affilie', 'user_affilie__role', 'methode_paiement'
+        'client', 'client__provenance', 'user_affilie', 'user_affilie__role', 'methode_paiement', 'fournisseur'
     ).prefetch_related(
         'commandes__produit__activations'
     )
@@ -99,6 +151,7 @@ class VenteViewSet(viewsets.ModelViewSet):
         client_ids = parse_id_list(self.request.query_params, 'client', 'clients')
         provenance_ids = parse_id_list(self.request.query_params, 'provenance', 'provenances')
         produit_ids = parse_id_list(self.request.query_params, 'produit', 'produits')
+        fournisseur_ids = parse_id_list(self.request.query_params, 'fournisseur', 'fournisseurs')
 
         if date_debut:
             qs = qs.filter(date__date__gte=date_debut)
@@ -114,6 +167,8 @@ class VenteViewSet(viewsets.ModelViewSet):
             qs = qs.filter(client__provenance_id__in=provenance_ids)
         if produit_ids:
             qs = qs.filter(commandes__produit_id__in=produit_ids).distinct()
+        if fournisseur_ids:
+            qs = qs.filter(fournisseur_id__in=fournisseur_ids)
         if montant_min:
             qs = qs.filter(total__gte=montant_min)
         if montant_max:
@@ -124,6 +179,7 @@ class VenteViewSet(viewsets.ModelViewSet):
                 Q(client__nom__icontains=search) |
                 Q(client__numero__icontains=search) |
                 Q(client__provenance__label__icontains=search) |
+                Q(fournisseur__nom__icontains=search) |
                 Q(numero_commande_fournisseur__icontains=search) |
                 Q(id__icontains=search)
             )
@@ -139,6 +195,7 @@ class VenteViewSet(viewsets.ModelViewSet):
                 'user_affilie__nom', '-user_affilie__nom',
                 'user_affilie__prenom', '-user_affilie__prenom',
                 'methode_paiement__label', '-methode_paiement__label',
+                'fournisseur__nom', '-fournisseur__nom',
                 'numero_commande_fournisseur', '-numero_commande_fournisseur'
             ]
             if ordering in allowed:
@@ -220,6 +277,7 @@ class DashboardView(APIView):
         client_ids = parse_id_list(request.query_params, 'client', 'clients')
         provenance_ids = parse_id_list(request.query_params, 'provenance', 'provenances')
         produit_ids = parse_id_list(request.query_params, 'produit', 'produits')
+        fournisseur_ids = parse_id_list(request.query_params, 'fournisseur', 'fournisseurs')
 
         ventes_qs = Vente.objects.all().prefetch_related('commandes__produit')
         commandes_qs = Commande.objects.select_related('produit', 'vente')
@@ -245,6 +303,9 @@ class DashboardView(APIView):
         if produit_ids:
             ventes_qs = ventes_qs.filter(commandes__produit_id__in=produit_ids).distinct()
             commandes_qs = commandes_qs.filter(produit_id__in=produit_ids)
+        if fournisseur_ids:
+            ventes_qs = ventes_qs.filter(fournisseur_id__in=fournisseur_ids)
+            commandes_qs = commandes_qs.filter(vente__fournisseur_id__in=fournisseur_ids)
         if montant_min:
             ventes_qs = ventes_qs.filter(total__gte=montant_min)
             commandes_qs = commandes_qs.filter(vente__total__gte=montant_min)

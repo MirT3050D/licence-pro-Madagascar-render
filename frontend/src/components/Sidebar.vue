@@ -42,6 +42,11 @@
         <span>Canaux de Provenance</span>
       </router-link>
 
+      <router-link to="/fournisseurs" class="nav-item" :class="{ active: $route.path.startsWith('/fournisseurs') }">
+        <Truck :size="20" />
+        <span>Fournisseurs</span>
+      </router-link>
+
       <router-link to="/paiements" class="nav-item" :class="{ active: $route.path.startsWith('/paiements') }">
         <CreditCard :size="20" />
         <span>Modes de règlement</span>
@@ -93,6 +98,7 @@ import {
   User,
   LogOut,
   Share2,
+  Truck,
   UserCheck,
 } from '@lucide/vue'
 import { useAuth } from '../composables/useAuth'

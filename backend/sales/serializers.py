@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import MethodePaiement, Vente, Commande, MediaBuyerCommission
+from .models import MethodePaiement, Fournisseur, Vente, Commande, MediaBuyerCommission
 from clients.models import Client, Provenance
 from catalog.models import Produit
 from clients.serializers import ClientSerializer, ProvenanceSerializer
@@ -14,6 +14,15 @@ class MethodePaiementSerializer(serializers.ModelSerializer):
     class Meta:
         model = MethodePaiement
         fields = ['id', 'label', 'details', 'is_active', 'ventes_count']
+
+
+class FournisseurSerializer(serializers.ModelSerializer):
+    ventes_count = serializers.IntegerField(source='ventes.count', read_only=True)
+
+    class Meta:
+        model = Fournisseur
+        fields = ['id', 'nom', 'contact', 'site_web', 'notes', 'is_active', 'created_at', 'ventes_count']
+        read_only_fields = ['id', 'created_at', 'ventes_count']
 
 
 class CommandeSerializer(serializers.ModelSerializer):
@@ -37,6 +46,7 @@ class VenteSerializer(serializers.ModelSerializer):
     client = ClientSerializer(read_only=True)
     user_affilie = UtilisateurSerializer(read_only=True)
     methode_paiement = MethodePaiementSerializer(read_only=True)
+    fournisseur = FournisseurSerializer(read_only=True)
     commandes = CommandeSerializer(many=True, read_only=True)
     total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     guides_activation = serializers.SerializerMethodField()
@@ -46,7 +56,7 @@ class VenteSerializer(serializers.ModelSerializer):
         model = Vente
         fields = [
             'id', 'date', 'client', 'user_affilie', 'methode_paiement',
-            'numero_commande_fournisseur', 'numero_commande',
+            'fournisseur', 'numero_commande_fournisseur', 'numero_commande',
             'commandes', 'total', 'guides_activation'
         ]
 
@@ -67,6 +77,7 @@ class VenteCreateSerializer(serializers.Serializer):
     client_id = serializers.IntegerField()
     user_affilie_id = serializers.IntegerField(required=False, allow_null=True)
     methode_paiement_id = serializers.IntegerField()
+    fournisseur_id = serializers.IntegerField(required=False, allow_null=True)
     date = serializers.DateTimeField(required=False, allow_null=True)
     numero_commande_fournisseur = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     numero_commande = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -80,6 +91,11 @@ class VenteCreateSerializer(serializers.Serializer):
     def validate_methode_paiement_id(self, value):
         if not MethodePaiement.objects.filter(id=value).exists():
             raise serializers.ValidationError("Méthode de paiement introuvable.")
+        return value
+
+    def validate_fournisseur_id(self, value):
+        if value is not None and not Fournisseur.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Fournisseur introuvable.")
         return value
 
     def validate_articles(self, value):
@@ -97,6 +113,9 @@ class VenteCreateSerializer(serializers.Serializer):
 
         client = Client.objects.get(id=validated_data['client_id'])
         methode = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
+        fournisseur_id = validated_data.get('fournisseur_id')
+        fournisseur = Fournisseur.objects.filter(id=fournisseur_id).first() if fournisseur_id else None
+
         articles_data = validated_data['articles']
         sale_date = validated_data.get('date')
         numero_cmd = validated_data.get('numero_commande_fournisseur')
@@ -110,6 +129,7 @@ class VenteCreateSerializer(serializers.Serializer):
                 'client': client,
                 'user_affilie': user_affilie,
                 'methode_paiement': methode,
+                'fournisseur': fournisseur,
                 'numero_commande_fournisseur': numero_cmd,
             }
             if sale_date:
@@ -145,6 +165,9 @@ class VenteCreateSerializer(serializers.Serializer):
             instance.client = Client.objects.get(id=validated_data['client_id'])
         if 'methode_paiement_id' in validated_data:
             instance.methode_paiement = MethodePaiement.objects.get(id=validated_data['methode_paiement_id'])
+        if 'fournisseur_id' in validated_data:
+            fournisseur_id = validated_data.get('fournisseur_id')
+            instance.fournisseur = Fournisseur.objects.filter(id=fournisseur_id).first() if fournisseur_id else None
         if 'date' in validated_data and validated_data['date'] is not None:
             instance.date = validated_data['date']
 

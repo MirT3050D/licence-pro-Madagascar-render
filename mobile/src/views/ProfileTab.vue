@@ -195,6 +195,19 @@
         </div>
       </div>
 
+      <!-- Fournisseurs & Approvisionnement (Mobile) -->
+      <div class="admin-console-card suppliers-card-wrap">
+        <div class="admin-header">
+          <div>
+            <h3 class="admin-title">🏢 Fournisseurs & Licences</h3>
+            <span class="admin-sub">{{ suppliersList.length }} fournisseur(s) · Traçabilité des achats</span>
+          </div>
+          <button @click="openSuppliersModal" class="btn-supplier-manage-header">
+            Gérer
+          </button>
+        </div>
+      </div>
+
       <!-- Connection / Server Info -->
       <div class="info-card-box">
         <h4 class="info-title">Connexion Système</h4>
@@ -216,6 +229,103 @@
         </button>
       </div>
     </ion-content>
+
+    <!-- Modal Gestion Fournisseurs Mobile -->
+    <ion-modal :is-open="isSuppliersModalOpen" @didDismiss="isSuppliersModalOpen = false" :initial-breakpoint="0.9" :breakpoints="[0, 0.9, 1]">
+      <ion-header>
+        <ion-toolbar class="main-toolbar">
+          <ion-title>Fournisseurs de Licences</ion-title>
+          <ion-buttons slot="end">
+            <ion-button @click="isSuppliersModalOpen = false" class="btn-modal-close">Fermer</ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="ion-padding supplier-modal-content">
+        <!-- Top Action Button -->
+        <div class="supplier-modal-top-bar">
+          <button
+            type="button"
+            @click="showSupplierCreateForm = !showSupplierCreateForm"
+            class="btn-add-supplier-top"
+          >
+            <ion-icon :icon="addCircleOutline" />
+            <span>{{ showSupplierCreateForm ? 'Masquer formulaire' : '+ Nouveau Fournisseur' }}</span>
+          </button>
+        </div>
+
+        <!-- Create / Edit Form Card -->
+        <div v-if="showSupplierCreateForm" class="mobile-supplier-form-card animate-fade">
+          <h4 class="form-title-mobile">{{ editingSupplierId ? 'Modifier Fournisseur' : 'Nouveau Fournisseur' }}</h4>
+          <input
+            v-model="supplierForm.nom"
+            type="text"
+            placeholder="Nom du fournisseur (ex: Kinguin, G2A) *"
+            class="mobile-input"
+          />
+          <input
+            v-model="supplierForm.site_web"
+            type="url"
+            placeholder="Portail d'achat (ex: https://...)"
+            class="mobile-input"
+          />
+          <input
+            v-model="supplierForm.contact"
+            type="text"
+            placeholder="Contact (ex: WhatsApp, Telegram...)"
+            class="mobile-input"
+          />
+          <textarea
+            v-model="supplierForm.notes"
+            rows="2"
+            placeholder="Conditions de garantie ou notes d'achat..."
+            class="mobile-input"
+          ></textarea>
+          <div class="supplier-form-actions">
+            <button type="button" @click="cancelSupplierForm" class="btn-cancel-sm">
+              Annuler
+            </button>
+            <button
+              type="button"
+              @click="saveSupplier"
+              class="btn-save-sm"
+              :disabled="!supplierForm.nom.trim() || savingSupplier"
+            >
+              {{ savingSupplier ? 'Enregistrement...' : 'Enregistrer' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Suppliers List -->
+        <div class="mobile-suppliers-list">
+          <div v-for="s in suppliersList" :key="s.id" class="mobile-supplier-item">
+            <div class="s-left">
+              <span class="s-name">{{ s.nom }}</span>
+              <a v-if="s.site_web" :href="s.site_web" target="_blank" class="s-link">
+                {{ s.site_web.replace(/^https?:\/\//i, '').slice(0, 30) }}
+              </a>
+              <span v-if="s.contact" class="s-contact">📞 {{ s.contact }}</span>
+              <span class="s-sales-count">{{ s.ventes_count || 0 }} commande(s) associée(s)</span>
+            </div>
+            <div class="s-right">
+              <button
+                type="button"
+                @click="toggleSupplierActive(s)"
+                class="btn-status-pill"
+                :class="{ active: s.is_active }"
+              >
+                {{ s.is_active ? 'Actif' : 'Inactif' }}
+              </button>
+              <button type="button" @click="editSupplier(s)" class="btn-edit-icon" title="Modifier">
+                <ion-icon :icon="createOutline" />
+              </button>
+            </div>
+          </div>
+          <div v-if="suppliersList.length === 0" class="empty-suppliers-mobile">
+            <p>Aucun fournisseur enregistré pour le moment.</p>
+          </div>
+        </div>
+      </ion-content>
+    </ion-modal>
   </ion-page>
 </template>
 
@@ -233,6 +343,7 @@ import {
   IonContent,
   IonRefresher,
   IonRefresherContent,
+  IonModal,
   alertController,
   toastController,
 } from '@ionic/vue'
@@ -245,6 +356,8 @@ import {
   searchOutline,
   trashOutline,
   personOutline,
+  addCircleOutline,
+  createOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
@@ -263,6 +376,20 @@ const loadingUserId = ref(null)
 const activeFilter = ref('all')
 const hasUserManuallySelectedFilter = ref(false)
 const userSearchQuery = ref('')
+
+// Fournisseurs Mobile
+const suppliersList = ref([])
+const isSuppliersModalOpen = ref(false)
+const showSupplierCreateForm = ref(false)
+const editingSupplierId = ref(null)
+const savingSupplier = ref(false)
+const supplierForm = ref({
+  nom: '',
+  site_web: '',
+  contact: '',
+  notes: '',
+  is_active: true,
+})
 
 const userInitials = computed(() => {
   const p = user.value?.prenom || ''
@@ -335,6 +462,97 @@ async function loadData() {
 
   if (isSuperAdmin.value) {
     await loadUsers()
+  }
+  await loadSuppliers()
+}
+
+async function loadSuppliers() {
+  try {
+    const res = await apiClient.get('/ventes/fournisseurs/')
+    suppliersList.value = res.data.results || res.data || []
+  } catch (e) {
+    console.error('Erreur chargement fournisseurs mobile:', e)
+  }
+}
+
+function openSuppliersModal() {
+  showSupplierCreateForm.value = false
+  editingSupplierId.value = null
+  isSuppliersModalOpen.value = true
+  loadSuppliers()
+}
+
+function cancelSupplierForm() {
+  showSupplierCreateForm.value = false
+  editingSupplierId.value = null
+  supplierForm.value = { nom: '', site_web: '', contact: '', notes: '', is_active: true }
+}
+
+function editSupplier(s) {
+  editingSupplierId.value = s.id
+  supplierForm.value = {
+    nom: s.nom,
+    site_web: s.site_web || '',
+    contact: s.contact || '',
+    notes: s.notes || '',
+    is_active: s.is_active !== false,
+  }
+  showSupplierCreateForm.value = true
+}
+
+async function saveSupplier() {
+  if (!supplierForm.value.nom.trim()) return
+  savingSupplier.value = true
+
+  try {
+    if (editingSupplierId.value) {
+      await apiClient.put(`/ventes/fournisseurs/${editingSupplierId.value}/`, supplierForm.value)
+      const toast = await toastController.create({
+        message: `Fournisseur « ${supplierForm.value.nom} » mis à jour !`,
+        duration: 2000,
+        color: 'success',
+        position: 'top',
+      })
+      await toast.present()
+    } else {
+      await apiClient.post('/ventes/fournisseurs/', supplierForm.value)
+      const toast = await toastController.create({
+        message: `Fournisseur « ${supplierForm.value.nom} » créé avec succès !`,
+        duration: 2000,
+        color: 'success',
+        position: 'top',
+      })
+      await toast.present()
+    }
+    cancelSupplierForm()
+    await loadSuppliers()
+  } catch (e) {
+    console.error('Erreur sauvegarde fournisseur:', e)
+    const toast = await toastController.create({
+      message: e.response?.data?.nom?.[0] || 'Erreur lors de la sauvegarde du fournisseur.',
+      duration: 3000,
+      color: 'danger',
+      position: 'top',
+    })
+    await toast.present()
+  } finally {
+    savingSupplier.value = false
+  }
+}
+
+async function toggleSupplierActive(s) {
+  try {
+    const res = await apiClient.post(`/ventes/fournisseurs/${s.id}/toggle-active/`)
+    s.is_active = res.data.is_active
+    const toast = await toastController.create({
+      message: `Fournisseur « ${s.nom} » ${s.is_active ? 'activé' : 'désactivé'} !`,
+      duration: 2000,
+      color: 'success',
+      position: 'top',
+    })
+    await toast.present()
+  } catch (e) {
+    console.error('Erreur bascule statut:', e)
   }
 }
 
@@ -1004,5 +1222,185 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+/* Fournisseurs Mobile Styles */
+.suppliers-card-wrap {
+  margin: 0 16px 16px 16px;
+}
+
+.btn-supplier-manage-header {
+  background: rgba(13, 148, 136, 0.2);
+  border: 1px solid rgba(13, 148, 136, 0.4);
+  color: #2DD4BF;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.supplier-modal-content {
+  --background: #0B1120;
+}
+
+.supplier-modal-top-bar {
+  margin-bottom: 1rem;
+}
+
+.btn-add-supplier-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #0D9488 0%, #0284C7 100%);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mobile-supplier-form-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-title-mobile {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 4px 0;
+}
+
+.supplier-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-cancel-sm {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #94A3B8;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.btn-save-sm {
+  background: #0D9488;
+  border: none;
+  color: white;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.mobile-suppliers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-supplier-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  gap: 10px;
+}
+
+.s-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.s-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+}
+
+.s-link {
+  font-size: 0.72rem;
+  color: #38BDF8;
+  text-decoration: underline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.s-contact {
+  font-size: 0.72rem;
+  color: #94A3B8;
+}
+
+.s-sales-count {
+  font-size: 0.7rem;
+  color: #CBD5E1;
+  opacity: 0.8;
+}
+
+.s-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-status-pill {
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.1);
+  color: #94A3B8;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-status-pill.active {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+}
+
+.btn-edit-icon {
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  color: #E2E8F0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.empty-suppliers-mobile {
+  text-align: center;
+  color: #94A3B8;
+  padding: 2rem 1rem;
+  font-size: 0.85rem;
 }
 </style>

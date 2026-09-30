@@ -19,6 +19,24 @@ class MethodePaiement(models.Model):
         return self.label
 
 
+class Fournisseur(models.Model):
+    nom = models.CharField(max_length=150, unique=True, verbose_name="Nom du fournisseur")
+    contact = models.CharField(max_length=255, blank=True, null=True, verbose_name="Contact / Référence")
+    site_web = models.CharField(max_length=500, blank=True, null=True, verbose_name="Site web / Lien portail")
+    notes = models.TextField(blank=True, null=True, verbose_name="Notes / Informations")
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'fournisseur'
+        verbose_name = 'Fournisseur'
+        verbose_name_plural = 'Fournisseurs'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
 class Vente(models.Model):
     date = models.DateTimeField(default=timezone.now)
     client = models.ForeignKey(
@@ -39,6 +57,15 @@ class Vente(models.Model):
         db_column='id_methode_paiement',
         related_name='ventes'
     )
+    fournisseur = models.ForeignKey(
+        Fournisseur,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        db_column='id_fournisseur',
+        related_name='ventes',
+        verbose_name="Fournisseur"
+    )
     numero_commande_fournisseur = models.CharField(
         max_length=100,
         blank=True,
@@ -56,12 +83,14 @@ class Vente(models.Model):
             models.Index(fields=['client'], name='idx_vente_client'),
             models.Index(fields=['user_affilie'], name='idx_vente_user'),
             models.Index(fields=['methode_paiement'], name='idx_vente_paiement'),
+            models.Index(fields=['fournisseur'], name='idx_vente_fournisseur'),
             models.Index(fields=['numero_commande_fournisseur'], name='idx_vente_num_cmd_fourn'),
         ]
 
     def __str__(self):
         cmd_info = f" [Cmd: {self.numero_commande_fournisseur}]" if self.numero_commande_fournisseur else ""
-        return f"Vente #{self.id}{cmd_info} - {self.client.nom} ({self.date.strftime('%d/%m/%Y %H:%M')})"
+        fourn_info = f" [{self.fournisseur.nom}]" if self.fournisseur else ""
+        return f"Vente #{self.id}{fourn_info}{cmd_info} - {self.client.nom} ({self.date.strftime('%d/%m/%Y %H:%M')})"
 
     @property
     def numero_commande(self):

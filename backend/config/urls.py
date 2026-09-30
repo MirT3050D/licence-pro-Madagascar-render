@@ -24,10 +24,13 @@ def home_view(request):
     })
 
 from rest_framework.routers import DefaultRouter
-from sales.views import MethodePaiementViewSet
+from sales.views import MethodePaiementViewSet, FournisseurViewSet
 
 payment_router = DefaultRouter()
 payment_router.register(r'', MethodePaiementViewSet, basename='methode-paiement-direct')
+
+fournisseur_router = DefaultRouter()
+fournisseur_router.register(r'', FournisseurViewSet, basename='fournisseur-direct')
 
 urlpatterns = [
     path('', home_view, name='home'),
@@ -40,6 +43,7 @@ urlpatterns = [
     path('api/produits/', include('catalog.urls')),
     path('api/ventes/', include('sales.urls')),
     path('api/methodes-paiement/', include(payment_router.urls)),
+    path('api/fournisseurs/', include(fournisseur_router.urls)),
     path('api/ai/', include('ai_assistant.urls')),
 ]
 

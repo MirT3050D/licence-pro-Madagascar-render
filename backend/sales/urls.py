@@ -1,9 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import MethodePaiementViewSet, VenteViewSet, DashboardView, MediaBuyerCommissionConfigView
+from .views import MethodePaiementViewSet, FournisseurViewSet, VenteViewSet, DashboardView, MediaBuyerCommissionConfigView
 
 router = DefaultRouter()
 router.register(r'methodes-paiement', MethodePaiementViewSet, basename='methode-paiement')
+router.register(r'fournisseurs', FournisseurViewSet, basename='fournisseur')
 router.register(r'', VenteViewSet, basename='vente')
 
 urlpatterns = [

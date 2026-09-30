@@ -134,6 +134,12 @@
           <option v-for="c in clientsList" :key="c.id" :value="c.id">{{ c.nom }}</option>
         </select>
 
+        <!-- Filtre Fournisseur -->
+        <select v-model="filters.fournisseur" @change="fetchSales" class="form-select filter-select" title="Filtrer par fournisseur d'achat">
+          <option value="">🏢 Tous les fournisseurs</option>
+          <option v-for="f in suppliersList" :key="f.id" :value="f.id">{{ f.nom }}</option>
+        </select>
+
         <!-- Filtre Montant Min / Max -->
         <div class="amount-filter-box" title="Filtrer par montant de transaction">
           <DollarSign :size="14" class="amount-icon text-muted" />
@@ -279,6 +285,13 @@
               <button type="button" @click="removePaymentFilter(mId)" class="pill-remove-btn"><X :size="11" /></button>
             </span>
 
+            <!-- Fournisseur -->
+            <span v-if="activeSupplierName" class="active-filter-pill">
+              <Truck :size="11" class="text-primary" />
+              <span>Fournisseur : <strong>{{ activeSupplierName }}</strong></span>
+              <button type="button" @click="filters.fournisseur = ''; fetchSales()" class="pill-remove-btn"><X :size="11" /></button>
+            </span>
+
             <!-- Montant range -->
             <span v-if="filters.montant_min || filters.montant_max" class="active-filter-pill">
               <DollarSign :size="11" class="text-emerald" />
@@ -392,15 +405,20 @@
                 <div class="sale-ref-col">
                   <span class="font-mono font-bold text-primary">#{{ vente.id }}</span>
                   <div
-                    v-if="vente.numero_commande_fournisseur"
+                    v-if="vente.fournisseur || vente.numero_commande_fournisseur"
                     class="badge badge-xs supplier-badge-table"
-                    :title="'N° commande fournisseur : ' + vente.numero_commande_fournisseur"
+                    :title="getSupplierBadgeTitle(vente)"
                   >
-                    <Tag :size="10" />
-                    <span class="truncate-tag">{{ vente.numero_commande_fournisseur }}</span>
+                    <Truck v-if="vente.fournisseur" :size="10" />
+                    <Tag v-else :size="10" />
+                    <span class="truncate-tag">
+                      <strong v-if="vente.fournisseur">{{ vente.fournisseur.nom }}</strong>
+                      <span v-if="vente.fournisseur && vente.numero_commande_fournisseur"> · </span>
+                      <span v-if="vente.numero_commande_fournisseur">{{ vente.numero_commande_fournisseur }}</span>
+                    </span>
                   </div>
-                  <div v-else class="supplier-ref-none" title="Aucun numéro fournisseur renseigné">
-                    <span>Sans n° fourn.</span>
+                  <div v-else class="supplier-ref-none" title="Aucun fournisseur renseigné">
+                    <span>Sans fourn.</span>
                   </div>
                 </div>
               </td>
@@ -556,22 +574,44 @@
               </div>
             </div>
 
-            <!-- Champ Numéro de commande fournisseur (Optionnel / Réclamation) -->
-            <div class="form-group supplier-order-form-group">
-              <div class="field-label-row">
-                <label class="form-label flex items-center gap-1.5">
-                  <Tag :size="13" class="text-primary" />
-                  <span>N° Commande Fournisseur</span>
-                  <span class="badge badge-secondary badge-xs">Optionnel</span>
-                </label>
-                <span class="field-hint-text">Recommandé pour retrouver la licence et faire une réclamation fournisseur si le client a un souci</span>
+            <!-- Traçabilité Achat : Fournisseur & N° Commande Fournisseur -->
+            <div class="supplier-purchase-row">
+              <div class="form-group flex-1">
+                <div class="field-label-row">
+                  <label class="form-label flex items-center gap-1.5">
+                    <Truck :size="13" class="text-primary" />
+                    <span>Fournisseur</span>
+                    <span class="badge badge-secondary badge-xs">Optionnel</span>
+                  </label>
+                  <button type="button" @click="openQuickSupplierModal" class="btn-text-link">
+                    + Nouveau
+                  </button>
+                </div>
+                <SearchableSelect
+                  v-model="form.fournisseur_id"
+                  :options="supplierOptions"
+                  placeholder="-- Fournisseur (Kinguin, G2A...) --"
+                  search-placeholder="Rechercher un fournisseur..."
+                  allow-clear
+                />
               </div>
-              <input
-                v-model="form.numero_commande_fournisseur"
-                type="text"
-                class="form-input font-mono"
-                placeholder="Ex: CMD-FOURN-98412, ORD-12345, LIC-SUP-012..."
-              />
+
+              <div class="form-group flex-1">
+                <div class="field-label-row">
+                  <label class="form-label flex items-center gap-1.5">
+                    <Tag :size="13" class="text-primary" />
+                    <span>N° Commande Fournisseur</span>
+                    <span class="badge badge-secondary badge-xs">Optionnel</span>
+                  </label>
+                  <span class="field-hint-text">Réf d'achat / reçu</span>
+                </div>
+                <input
+                  v-model="form.numero_commande_fournisseur"
+                  type="text"
+                  class="form-input font-mono"
+                  placeholder="Ex: CMD-98412, ORD-12345..."
+                />
+              </div>
             </div>
 
             <!-- 2. Section Articles & Licences sous forme de tableau épuré -->
@@ -724,16 +764,30 @@
               <div><span class="badge badge-primary">{{ selectedSale.methode_paiement?.label }}</span></div>
             </div>
             <div>
-              <span class="text-xs text-muted">COMMANDE FOURNISSEUR</span>
-              <div v-if="selectedSale.numero_commande_fournisseur" class="flex items-center gap-1.5 mt-0.5">
-                <span class="badge badge-primary badge-xs font-mono font-bold">{{ selectedSale.numero_commande_fournisseur }}</span>
-                <button @click="copyText(selectedSale.numero_commande_fournisseur, 'N° commande fournisseur copié !')" class="btn-copy-mini" title="Copier le numéro">
-                  <Copy :size="12" />
-                </button>
+              <span class="text-xs text-muted">FOURNISSEUR & ACHAT</span>
+              <div v-if="selectedSale.fournisseur || selectedSale.numero_commande_fournisseur" class="flex flex-col gap-1 mt-0.5">
+                <div v-if="selectedSale.fournisseur" class="flex items-center gap-1.5">
+                  <span class="badge badge-primary badge-xs font-bold">{{ selectedSale.fournisseur.nom }}</span>
+                  <a
+                    v-if="selectedSale.fournisseur.site_web"
+                    :href="normalizeUrl(selectedSale.fournisseur.site_web)"
+                    target="_blank"
+                    class="text-primary hover:underline text-xs flex items-center gap-0.5"
+                    title="Accéder au portail fournisseur"
+                  >
+                    <ExternalLink :size="11" />
+                  </a>
+                </div>
+                <div v-if="selectedSale.numero_commande_fournisseur" class="flex items-center gap-1.5">
+                  <span class="font-mono text-xs font-bold text-secondary">#{{ selectedSale.numero_commande_fournisseur }}</span>
+                  <button @click="copyText(selectedSale.numero_commande_fournisseur, 'N° commande fournisseur copié !')" class="btn-copy-mini" title="Copier le numéro">
+                    <Copy :size="12" />
+                  </button>
+                </div>
               </div>
               <div v-else class="text-xs text-muted italic flex items-center gap-1 mt-0.5">
                 <span>Non renseigné</span>
-                <button v-if="canEditSale(selectedSale)" @click="openEditSaleModal(selectedSale)" class="text-primary hover:underline font-semibold ml-1 cursor-pointer" title="Ajouter le numéro de commande fournisseur">
+                <button v-if="canEditSale(selectedSale)" @click="openEditSaleModal(selectedSale)" class="text-primary hover:underline font-semibold ml-1 cursor-pointer" title="Ajouter le fournisseur">
                   + Ajouter
                 </button>
               </div>
@@ -784,6 +838,67 @@
       </div>
     </div>
     </Teleport>
+
+    <!-- Modal Création Rapide de Fournisseur -->
+    <Teleport to="body">
+      <div v-if="showQuickSupplierModal" class="modal-backdrop" @click.self="showQuickSupplierModal = false">
+        <div class="modal-card quick-supplier-modal card animate-fade">
+          <div class="modal-header">
+            <div class="modal-title-wrap">
+              <div class="modal-icon-badge cyan">
+                <Truck :size="20" />
+              </div>
+              <div>
+                <h3>Nouveau Fournisseur Rapide</h3>
+                <span class="text-xs text-muted">Ajoutez un partenaire d'approvisionnement en quelques secondes</span>
+              </div>
+            </div>
+            <button @click="showQuickSupplierModal = false" class="btn-close"><X :size="20" /></button>
+          </div>
+
+          <form @submit.prevent="createQuickSupplier" class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Nom du fournisseur *</label>
+              <input
+                v-model="quickSupplierForm.nom"
+                required
+                type="text"
+                class="form-input"
+                placeholder="Ex: Kinguin, G2A, Eneba..."
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Site web / Lien d'achat</label>
+              <input
+                v-model="quickSupplierForm.site_web"
+                type="text"
+                class="form-input"
+                placeholder="Ex: https://www.kinguin.net"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contact / Téléphone / WhatsApp</label>
+              <input
+                v-model="quickSupplierForm.contact"
+                type="text"
+                class="form-input"
+                placeholder="Ex: WhatsApp ou support..."
+              />
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" @click="showQuickSupplierModal = false" class="btn btn-secondary">
+                Annuler
+              </button>
+              <button type="submit" class="btn btn-primary" :disabled="quickSupplierSaving || !quickSupplierForm.nom.trim()">
+                <span v-if="quickSupplierSaving">Création...</span>
+                <span v-else>Créer & Sélectionner</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -816,7 +931,8 @@ import {
   ArrowUp,
   ArrowDown,
   SlidersHorizontal,
-  Tag
+  Tag,
+  Truck
 } from '@lucide/vue'
 import confetti from 'canvas-confetti'
 import apiClient from '../api/client'
@@ -835,8 +951,14 @@ const productsList = ref([])
 const paymentMethods = ref([])
 const vendorsList = ref([])
 const provenancesList = ref([])
+const suppliersList = ref([])
 const loading = ref(false)
 const submitting = ref(false)
+
+// Création rapide fournisseur
+const showQuickSupplierModal = ref(false)
+const quickSupplierForm = ref({ nom: '', site_web: '', contact: '' })
+const quickSupplierSaving = ref(false)
 
 const clientOptions = computed(() => {
   return (clientsList.value || []).map((c) => ({
@@ -844,6 +966,16 @@ const clientOptions = computed(() => {
     label: c.nom,
     subtitle: c.numero ? c.numero : (c.email || 'Sans contact'),
   }))
+})
+
+const supplierOptions = computed(() => {
+  return (suppliersList.value || [])
+    .filter(s => s.is_active)
+    .map((s) => ({
+      id: s.id,
+      label: s.nom,
+      subtitle: s.contact || (s.site_web ? cleanUrlDisplay(s.site_web) : ''),
+    }))
 })
 
 const productOptions = computed(() => {
@@ -881,6 +1013,7 @@ const filters = ref({
   date_fin: '',
   methodes_paiement: [],
   client: '',
+  fournisseur: '',
   provenances: [],
   montant_min: '',
   montant_max: '',
@@ -918,6 +1051,7 @@ const form = ref({
   date: getLocalDateTimeString(),
   user_affilie_id: '',
   methode_paiement_id: '',
+  fournisseur_id: '',
   numero_commande_fournisseur: '',
   articles: [
     { produit_id: '', quantite: 1, prix_unitaire: 0 }
@@ -943,11 +1077,18 @@ const hasActiveFilters = computed(() => {
     filters.value.date_fin ||
     filters.value.methodes_paiement?.length ||
     filters.value.client ||
+    filters.value.fournisseur ||
     filters.value.provenances?.length ||
     filters.value.montant_min ||
     filters.value.montant_max ||
     activePeriodPreset.value !== 'all'
   )
+})
+
+const activeSupplierName = computed(() => {
+  if (!filters.value.fournisseur) return ''
+  const s = suppliersList.value.find(item => String(item.id) === String(filters.value.fournisseur))
+  return s ? s.nom : ''
 })
 
 const activeFilterVendorName = computed(() => {
@@ -1149,6 +1290,7 @@ async function fetchSales() {
     if (filters.value.date_debut) params.date_debut = filters.value.date_debut
     if (filters.value.date_fin) params.date_fin = filters.value.date_fin
     if (filters.value.client) params.client = filters.value.client
+    if (filters.value.fournisseur) params.fournisseur = filters.value.fournisseur
     if (filters.value.montant_min) params.montant_min = filters.value.montant_min
     if (filters.value.montant_max) params.montant_max = filters.value.montant_max
 
@@ -1167,7 +1309,8 @@ async function fetchSales() {
         client: 'client__nom',
         vendeur: 'user_affilie__nom',
         reglement: 'methode_paiement__label',
-        provenance: 'client__provenance__label'
+        provenance: 'client__provenance__label',
+        fournisseur: 'fournisseur__nom'
       }
       const fieldName = backendMap[currentSort.value.field] || 'date'
       params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName
@@ -1184,18 +1327,20 @@ async function fetchSales() {
 
 async function fetchFormDependencies() {
   try {
-    const [cRes, pRes, mRes, uRes, provRes] = await Promise.all([
+    const [cRes, pRes, mRes, uRes, provRes, fournRes] = await Promise.all([
       apiClient.get('/clients/'),
       apiClient.get('/produits/'),
       apiClient.get('/ventes/methodes-paiement/'),
       apiClient.get('/auth/users/').catch(() => ({ data: [] })),
-      apiClient.get('/clients/provenances/').catch(() => ({ data: [] }))
+      apiClient.get('/clients/provenances/').catch(() => ({ data: [] })),
+      apiClient.get('/ventes/fournisseurs/').catch(() => ({ data: [] }))
     ])
     clientsList.value = cRes.data.results || cRes.data || []
     productsList.value = pRes.data.results || pRes.data || []
     paymentMethods.value = mRes.data.results || mRes.data || []
     vendorsList.value = uRes.data.results || uRes.data || []
     provenancesList.value = provRes.data.results || provRes.data || []
+    suppliersList.value = fournRes.data.results || fournRes.data || []
   } catch (err) {
     console.error('Erreur dépendances vente:', err)
   }
@@ -1260,6 +1405,7 @@ function resetFilters() {
     date_fin: '',
     methodes_paiement: [],
     client: '',
+    fournisseur: '',
     provenances: [],
     montant_min: '',
     montant_max: '',
@@ -1368,6 +1514,7 @@ function openEditSaleModal(vente) {
     date: vente.date ? getLocalDateTimeString(new Date(vente.date)) : getLocalDateTimeString(),
     user_affilie_id: vente.user_affilie?.id || (user.value?.id || ''),
     methode_paiement_id: vente.methode_paiement?.id || '',
+    fournisseur_id: vente.fournisseur?.id || '',
     numero_commande_fournisseur: vente.numero_commande_fournisseur || '',
     articles: vente.commandes?.length
       ? vente.commandes.map(cmd => ({
@@ -1395,6 +1542,7 @@ function resetForm() {
     date: getLocalDateTimeString(),
     user_affilie_id: user.value?.id || '',
     methode_paiement_id: defaultMethod?.id || '',
+    fournisseur_id: '',
     numero_commande_fournisseur: '',
     articles: [
       {
@@ -1458,6 +1606,7 @@ async function submitCreateSale() {
       client_id: form.value.client_id,
       user_affilie_id: form.value.user_affilie_id || undefined,
       methode_paiement_id: form.value.methode_paiement_id,
+      fournisseur_id: form.value.fournisseur_id ? Number(form.value.fournisseur_id) : null,
       date: form.value.date ? new Date(form.value.date).toISOString() : undefined,
       numero_commande_fournisseur: form.value.numero_commande_fournisseur ? form.value.numero_commande_fournisseur.trim() : null,
       articles: form.value.articles.map(a => ({
@@ -1524,6 +1673,54 @@ function formatDateTime(dateStr) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+function getSupplierBadgeTitle(vente) {
+  const parts = []
+  if (vente.fournisseur?.nom) parts.push(`Fournisseur: ${vente.fournisseur.nom}`)
+  if (vente.numero_commande_fournisseur) parts.push(`N° Cmd: ${vente.numero_commande_fournisseur}`)
+  return parts.join(' | ') || 'Fournisseur'
+}
+
+function normalizeUrl(url) {
+  if (!url) return '#'
+  if (!/^https?:\/\//i.test(url)) {
+    return 'https://' + url
+  }
+  return url
+}
+
+function cleanUrlDisplay(url) {
+  if (!url) return ''
+  return url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')
+}
+
+function openQuickSupplierModal() {
+  quickSupplierForm.value = { nom: '', site_web: '', contact: '' }
+  showQuickSupplierModal.value = true
+}
+
+async function createQuickSupplier() {
+  if (!quickSupplierForm.value.nom.trim()) return
+  quickSupplierSaving.value = true
+  try {
+    const payload = {
+      nom: quickSupplierForm.value.nom.trim(),
+      site_web: quickSupplierForm.value.site_web.trim() || undefined,
+      contact: quickSupplierForm.value.contact.trim() || undefined,
+      is_active: true
+    }
+    const res = await apiClient.post('/ventes/fournisseurs/', payload)
+    suppliersList.value.push(res.data)
+    form.value.fournisseur_id = res.data.id
+    showQuickSupplierModal.value = false
+    quickSupplierForm.value = { nom: '', site_web: '', contact: '' }
+  } catch (err) {
+    console.error('Erreur création rapide fournisseur:', err)
+    alert(err.response?.data?.nom?.[0] || 'Erreur lors de la création du fournisseur.')
+  } finally {
+    quickSupplierSaving.value = false
+  }
 }
 
 watch(() => route.query.vendeur, (vId) => {
@@ -2575,5 +2772,43 @@ onMounted(async () => {
 
 .btn-link-action:hover {
   opacity: 0.8;
+}
+
+.supplier-purchase-row {
+  display: flex;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .supplier-purchase-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.2s;
+}
+
+.btn-text-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.quick-supplier-modal {
+  max-width: 440px;
 }
 </style>

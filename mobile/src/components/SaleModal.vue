@@ -172,19 +172,71 @@
         </div>
       </div>
 
-      <!-- 5. N° COMMANDE FOURNISSEUR -->
+      <!-- 5. FOURNISSEUR & N° COMMANDE (TRAÇABILITÉ ACHAT) -->
       <div class="form-section">
         <div class="section-title">
-          <span>N° Commande Fournisseur</span>
-          <span class="badge-optional">Optionnel</span>
+          <span>Fournisseur d'achat</span>
+          <button type="button" @click="showQuickSupplier = !showQuickSupplier" class="btn-text-action">
+            {{ showQuickSupplier ? 'Choisir existant' : '+ Créer un fournisseur' }}
+          </button>
         </div>
-        <input
-          v-model="supplierOrderNumber"
-          type="text"
-          placeholder="Ex: ORD-89412, FRN-2024-X..."
-          class="mobile-input font-mono"
-        />
-        <p class="field-hint-mobile">Utile en cas de réclamation ou garantie auprès du fournisseur.</p>
+
+        <!-- Quick new supplier -->
+        <div v-if="showQuickSupplier" class="quick-client-box">
+          <input
+            v-model="newSupplierForm.nom"
+            type="text"
+            placeholder="Nom du fournisseur (ex: Kinguin, G2A) *"
+            class="mobile-input"
+          />
+          <input
+            v-model="newSupplierForm.site_web"
+            type="text"
+            placeholder="Lien portail (ex: https://...)"
+            class="mobile-input"
+          />
+          <input
+            v-model="newSupplierForm.contact"
+            type="text"
+            placeholder="Contact / WhatsApp (optionnel)"
+            class="mobile-input"
+          />
+          <button
+            type="button"
+            @click="createQuickSupplier"
+            class="btn-quick-save"
+            :disabled="!newSupplierForm.nom.trim() || supplierSaving"
+          >
+            {{ supplierSaving ? 'Création...' : 'Valider ce nouveau fournisseur' }}
+          </button>
+        </div>
+
+        <!-- Select existing supplier -->
+        <div v-else>
+          <SearchableSelect
+            v-model="selectedSupplierId"
+            :options="supplierOptions"
+            title="Choisir un fournisseur"
+            placeholder="-- Fournisseur (Kinguin, G2A...) --"
+            search-placeholder="Rechercher un fournisseur..."
+            allow-clear
+          />
+        </div>
+
+        <!-- Order number -->
+        <div class="mt-3">
+          <div class="field-label-mini">
+            <span>N° Commande Fournisseur</span>
+            <span class="badge-optional">Optionnel</span>
+          </div>
+          <input
+            v-model="supplierOrderNumber"
+            type="text"
+            placeholder="Ex: ORD-89412, FRN-2024-X..."
+            class="mobile-input font-mono"
+          />
+          <p class="field-hint-mobile">Utile en cas de réclamation ou garantie auprès du fournisseur.</p>
+        </div>
       </div>
 
       <!-- 6. TOTAL & SOUMISSION -->
@@ -249,6 +301,7 @@ const clients = ref([])
 const products = ref([])
 const paymentMethods = ref([])
 const provenances = ref([])
+const suppliers = ref([])
 
 const clientOptions = computed(() => {
   return (clients.value || []).map((c) => ({
@@ -256,6 +309,16 @@ const clientOptions = computed(() => {
     label: c.nom,
     subtitle: c.numero ? c.numero : (c.email || ''),
   }))
+})
+
+const supplierOptions = computed(() => {
+  return (suppliers.value || [])
+    .filter((s) => s.is_active)
+    .map((s) => ({
+      id: s.id,
+      label: s.nom,
+      subtitle: s.contact || (s.site_web ? s.site_web.replace(/^https?:\/\//i, '') : ''),
+    }))
 })
 
 const productOptions = computed(() => {
@@ -287,6 +350,7 @@ function getLocalDateTimeString(date = new Date()) {
 const saleDate = ref(getLocalDateTimeString())
 const selectedClientId = ref('')
 const selectedPaymentMethodId = ref('')
+const selectedSupplierId = ref(null)
 const supplierOrderNumber = ref('')
 const orderArticles = ref([{ produit_id: '', quantite: 1, prix_unitaire: 0 }])
 
@@ -295,6 +359,10 @@ const isEditing = computed(() => !!props.saleToEdit)
 const showQuickClient = ref(false)
 const clientSaving = ref(false)
 const newClientForm = ref({ nom: '', numero: '', id_provenance: '' })
+
+const showQuickSupplier = ref(false)
+const supplierSaving = ref(false)
+const newSupplierForm = ref({ nom: '', site_web: '', contact: '' })
 
 const isSubmitting = ref(false)
 const errorMessage = ref('')
@@ -366,17 +434,19 @@ watch(
 
 async function loadReferenceData() {
   try {
-    const [clientsRes, prodsRes, payRes, provRes] = await Promise.all([
+    const [clientsRes, prodsRes, payRes, provRes, fournRes] = await Promise.all([
       apiClient.get('/clients/'),
       apiClient.get('/produits/'),
       apiClient.get('/methodes-paiement/'),
       apiClient.get('/clients/provenances/'),
+      apiClient.get('/ventes/fournisseurs/').catch(() => ({ data: [] })),
     ])
 
     clients.value = clientsRes.data.results || clientsRes.data || []
     products.value = prodsRes.data.results || prodsRes.data || []
     paymentMethods.value = (payRes.data.results || payRes.data || []).filter((p) => p.is_active !== false)
     provenances.value = provRes.data.results || provRes.data || []
+    suppliers.value = fournRes.data.results || fournRes.data || []
 
     if (!selectedPaymentMethodId.value && paymentMethods.value.length) {
       selectedPaymentMethodId.value = paymentMethods.value[0].id
@@ -396,6 +466,7 @@ function populateFromSale(sale) {
   selectedClientId.value = sale.client?.id || ''
   selectedPaymentMethodId.value = sale.methode_paiement?.id || (paymentMethods.value[0]?.id || '')
   saleDate.value = sale.date ? getLocalDateTimeString(new Date(sale.date)) : getLocalDateTimeString()
+  selectedSupplierId.value = sale.fournisseur?.id || null
   supplierOrderNumber.value = sale.numero_commande_fournisseur || ''
 
   if (sale.commandes && sale.commandes.length > 0) {
@@ -426,11 +497,14 @@ function resetArticlesToDefault() {
 function resetForm() {
   selectedClientId.value = clients.value[0]?.id || ''
   selectedPaymentMethodId.value = paymentMethods.value[0]?.id || ''
+  selectedSupplierId.value = null
   saleDate.value = getLocalDateTimeString()
   supplierOrderNumber.value = ''
   resetArticlesToDefault()
   showQuickClient.value = false
   newClientForm.value = { nom: '', numero: '', id_provenance: '' }
+  showQuickSupplier.value = false
+  newSupplierForm.value = { nom: '', site_web: '', contact: '' }
 }
 
 function applyDraftIfAny() {
@@ -532,6 +606,29 @@ async function createQuickClient() {
   }
 }
 
+async function createQuickSupplier() {
+  if (!newSupplierForm.value.nom.trim()) return
+  supplierSaving.value = true
+  try {
+    const res = await apiClient.post('/ventes/fournisseurs/', {
+      nom: newSupplierForm.value.nom.trim(),
+      site_web: newSupplierForm.value.site_web.trim() || undefined,
+      contact: newSupplierForm.value.contact.trim() || undefined,
+      is_active: true,
+    })
+    const created = res.data
+    suppliers.value.push(created)
+    selectedSupplierId.value = created.id
+    showQuickSupplier.value = false
+    newSupplierForm.value = { nom: '', site_web: '', contact: '' }
+  } catch (err) {
+    console.error('Erreur création rapide fournisseur:', err)
+    alert("Impossible de créer le fournisseur. Vérifiez les informations.")
+  } finally {
+    supplierSaving.value = false
+  }
+}
+
 async function submitSale() {
   if (!isFormValid.value) return
   isSubmitting.value = true
@@ -541,6 +638,7 @@ async function submitSale() {
     const payload = {
       client_id: selectedClientId.value,
       methode_paiement_id: selectedPaymentMethodId.value,
+      fournisseur_id: selectedSupplierId.value ? Number(selectedSupplierId.value) : null,
       date: saleDate.value ? new Date(saleDate.value).toISOString() : undefined,
       numero_commande_fournisseur: supplierOrderNumber.value ? supplierOrderNumber.value.trim() : null,
       articles: orderArticles.value.map((a) => ({
@@ -896,5 +994,19 @@ function handleDismiss() {
 .btn-submit-sale:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.field-label-mini {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #94A3B8;
+  margin-bottom: 6px;
+}
+
+.mt-3 {
+  margin-top: 12px;
 }
 </style>

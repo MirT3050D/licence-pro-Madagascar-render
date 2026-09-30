@@ -28,12 +28,16 @@
 
         <div class="filter-selects-row">
           <select v-model="selectedProvenance" @change="fetchSales" class="mobile-filter-select">
-            <option value="">🌐 Toutes provenances</option>
+            <option value="">🌐 Provenances</option>
             <option v-for="prov in provenances" :key="prov.id" :value="prov.id">{{ prov.label }}</option>
           </select>
           <select v-model="selectedClient" @change="fetchSales" class="mobile-filter-select">
-            <option value="">👤 Tous clients</option>
+            <option value="">👤 Clients</option>
             <option v-for="c in clients" :key="c.id" :value="c.id">{{ c.nom }}</option>
+          </select>
+          <select v-model="selectedSupplier" @change="fetchSales" class="mobile-filter-select">
+            <option value="">🏢 Fournisseurs</option>
+            <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.nom }}</option>
           </select>
         </div>
 
@@ -117,9 +121,11 @@
             >
               {{ cmd.quantite }}x {{ cmd.produit_nom }}
             </span>
-            <span v-if="sale.numero_commande_fournisseur" class="item-tag supplier-order-tag" :title="'N° commande fournisseur : ' + sale.numero_commande_fournisseur">
+            <span v-if="sale.fournisseur || sale.numero_commande_fournisseur" class="item-tag supplier-order-tag" :title="'Fournisseur : ' + (sale.fournisseur?.nom || 'Non spécifié')">
               <ion-icon :icon="pricetagOutline" class="tag-icon-sm" />
-              <span>Fourn: {{ sale.numero_commande_fournisseur }}</span>
+              <span v-if="sale.fournisseur" class="font-bold">{{ sale.fournisseur.nom }}</span>
+              <span v-if="sale.fournisseur && sale.numero_commande_fournisseur"> · </span>
+              <span v-if="sale.numero_commande_fournisseur">#{{ sale.numero_commande_fournisseur }}</span>
             </span>
           </div>
 
@@ -137,6 +143,15 @@
                 <a :href="`tel:${sale.client.numero}`" class="phone-link" @click.stop>
                   📞 {{ sale.client.numero }}
                 </a>
+              </div>
+              <div class="detail-row" v-if="sale.fournisseur">
+                <span class="lbl">Fournisseur :</span>
+                <span class="val font-bold text-teal flex-inline items-center gap-1">
+                  {{ sale.fournisseur.nom }}
+                  <a v-if="sale.fournisseur.site_web" :href="sale.fournisseur.site_web" target="_blank" @click.stop class="link-external-icon" title="Ouvrir le portail">
+                    <ion-icon :icon="openOutline" />
+                  </a>
+                </span>
               </div>
               <div class="detail-row">
                 <span class="lbl">Cmd Fournisseur :</span>
@@ -227,6 +242,7 @@ import {
   copyOutline,
   createOutline,
   pricetagOutline,
+  openOutline,
 } from 'ionicons/icons'
 import apiClient from '../api/client'
 import { useAuth } from '../composables/useAuth'
@@ -238,8 +254,10 @@ const loading = ref(false)
 const sales = ref([])
 const clients = ref([])
 const provenances = ref([])
+const suppliers = ref([])
 const selectedProvenance = ref('')
 const selectedClient = ref('')
+const selectedSupplier = ref('')
 const searchQuery = ref('')
 const activePeriod = ref('all')
 const expandedSaleId = ref(null)
@@ -327,12 +345,14 @@ async function showToast(message, color = 'success') {
 
 async function loadFilterOptions() {
   try {
-    const [cRes, pRes] = await Promise.all([
+    const [cRes, pRes, sRes] = await Promise.all([
       apiClient.get('/clients/'),
       apiClient.get('/clients/provenances/'),
+      apiClient.get('/ventes/fournisseurs/').catch(() => ({ data: [] })),
     ])
     clients.value = cRes.data.results || cRes.data || []
     provenances.value = pRes.data.results || pRes.data || []
+    suppliers.value = sRes.data.results || sRes.data || []
   } catch (err) {
     console.error('Erreur chargement filtres ventes:', err)
   }
@@ -350,6 +370,9 @@ async function fetchSales() {
     }
     if (selectedProvenance.value) {
       params.provenance = selectedProvenance.value
+    }
+    if (selectedSupplier.value) {
+      params.fournisseur = selectedSupplier.value
     }
 
     const today = new Date()
